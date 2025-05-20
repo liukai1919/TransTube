@@ -1,0 +1,8 @@
+streamlit>=1.33
+yt-dlp>=2024.04
+youtube-transcript-api>=0.6
+openai>=1.19
+whisper-timestamped
+srt
+python-dotenv
+ffmpeg-python 
