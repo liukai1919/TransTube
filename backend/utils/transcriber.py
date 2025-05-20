@@ -25,7 +25,7 @@ def transcribe_to_srt(video_path: str, lang="en") -> str:
                                  start=start, end=end,
                                  content=seg["text"].strip()))
     srt_str = srt.compose(subs)
-    srt_path = tempfile.mktemp(suffix=".srt")
-    with open(srt_path, "w", encoding="utf-8") as fp:
-        fp.write(srt_str)
-    return srt_path 
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".srt") as tmp:
+        tmp.write(srt_str.encode("utf-8"))
+        srt_path = tmp.name
+    return srt_path
