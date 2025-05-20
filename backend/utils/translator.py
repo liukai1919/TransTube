@@ -37,7 +37,7 @@ def translate_srt_to_zh(srt_path: str) -> str:
             # 如果分割失败，保持原文
             sub.content = zh.strip()
     zh_srt = srt.compose(subs)
-    zh_path = tempfile.mktemp(suffix=".zh.srt")
-    with open(zh_path, "w", encoding="utf-8") as fp:
-        fp.write(zh_srt)
-    return zh_path 
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".zh.srt") as tmp:
+        tmp.write(zh_srt.encode("utf-8"))
+        zh_path = tmp.name
+    return zh_path
