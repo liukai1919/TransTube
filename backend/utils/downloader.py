@@ -61,6 +61,8 @@ def download_video(url: str, download_dir: str):
             'no_warnings': False,
             'progress': True,
             'skip_download': False,
+            # 使用 cookies 文件
+            'cookiefile': 'youtube.cookies',
         }
         
         # 下载视频
@@ -97,9 +99,21 @@ def download_video(url: str, download_dir: str):
             except _errors.NoTranscriptFound:
                 logger.warning("未找到英文字幕，尝试自动生成的字幕")
                 try:
-                    transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'], continue_after_error=True)
+                    # 获取自动生成的字幕
+                    transcript = YouTubeTranscriptApi.get_transcript(
+                        video_id,
+                        languages=['en'],
+                        preserve_formatting=True
+                    )
+                    
+                    # 确保transcript是列表格式
+                    if isinstance(transcript, dict):
+                        transcript = [transcript]
+                    
+                    # 转换为SRT格式
                     formatter = SRTFormatter()
                     srt_formatted = formatter.format_transcript(transcript)
+                    
                     srt_path = os.path.join(download_dir, f'{vid}.srt')
                     with open(srt_path, 'w', encoding='utf-8') as f:
                         f.write(srt_formatted)

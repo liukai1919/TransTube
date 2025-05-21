@@ -1,0 +1,39 @@
+2025-05-21 06:19:09,292 - utils.translator - INFO - 这是一条测试日志 - INFO
+2025-05-21 06:19:09,292 - utils.translator - WARNING - 这是一条测试日志 - WARNING
+2025-05-21 06:19:09,292 - utils.translator - ERROR - 这是一条测试日志 - ERROR
+2025-05-21 06:19:15,698 - utils.translator - INFO - 这是一条测试日志 - INFO
+2025-05-21 06:19:15,698 - utils.translator - WARNING - 这是一条测试日志 - WARNING
+2025-05-21 06:19:15,698 - utils.translator - ERROR - 这是一条测试日志 - ERROR
+2025-05-21 06:19:15,864 - backend.utils.translator - DEBUG - 这是一条测试日志 - DEBUG
+2025-05-21 06:19:15,864 - backend.utils.translator - INFO - 这是一条测试日志 - INFO
+2025-05-21 06:19:15,864 - backend.utils.translator - WARNING - 这是一条测试日志 - WARNING
+2025-05-21 06:19:15,864 - backend.utils.translator - ERROR - 这是一条测试日志 - ERROR
+2025-05-21 06:19:15,864 - backend.utils.translator - INFO - 测试日志写入
+2025-05-21 06:21:17,530 - utils.translator - INFO - 这是一条测试日志 - INFO
+2025-05-21 06:21:17,531 - utils.translator - WARNING - 这是一条测试日志 - WARNING
+2025-05-21 06:21:17,531 - utils.translator - ERROR - 这是一条测试日志 - ERROR
+2025-05-21 06:21:30,046 - utils.translator - INFO - 开始翻译字幕，共 49 条
+2025-05-21 06:21:30,046 - utils.translator - INFO - 开始翻译批次 1，包含 5 条字幕
+2025-05-21 06:21:30,046 - utils.translator - INFO - 正在使用模型 gemma3:27b 进行翻译...
+2025-05-21 06:21:43,576 - utils.translator - INFO - 开始翻译批次 2，包含 5 条字幕
+2025-05-21 06:21:43,577 - utils.translator - INFO - 正在使用模型 gemma3:27b 进行翻译...
+2025-05-21 06:21:44,975 - utils.translator - INFO - 开始翻译批次 3，包含 5 条字幕
+2025-05-21 06:21:44,975 - utils.translator - INFO - 正在使用模型 gemma3:27b 进行翻译...
+2025-05-21 06:21:46,479 - utils.translator - INFO - 开始翻译批次 4，包含 5 条字幕
+2025-05-21 06:21:46,479 - utils.translator - INFO - 正在使用模型 gemma3:27b 进行翻译...
+2025-05-21 06:21:48,338 - utils.translator - INFO - 开始翻译批次 5，包含 5 条字幕
+2025-05-21 06:21:48,338 - utils.translator - INFO - 正在使用模型 gemma3:27b 进行翻译...
+2025-05-21 06:21:49,636 - utils.translator - INFO - 开始翻译批次 6，包含 5 条字幕
+2025-05-21 06:21:49,636 - utils.translator - INFO - 正在使用模型 gemma3:27b 进行翻译...
+2025-05-21 06:21:51,196 - utils.translator - INFO - 开始翻译批次 7，包含 5 条字幕
+2025-05-21 06:21:51,196 - utils.translator - INFO - 正在使用模型 gemma3:27b 进行翻译...
+2025-05-21 06:21:52,731 - utils.translator - INFO - 开始翻译批次 8，包含 5 条字幕
+2025-05-21 06:21:52,732 - utils.translator - INFO - 正在使用模型 gemma3:27b 进行翻译...
+2025-05-21 06:21:54,856 - utils.translator - INFO - 开始翻译批次 9，包含 5 条字幕
+2025-05-21 06:21:54,856 - utils.translator - INFO - 正在使用模型 gemma3:27b 进行翻译...
+2025-05-21 06:21:57,047 - utils.translator - INFO - 开始翻译批次 10，包含 4 条字幕
+2025-05-21 06:21:57,047 - utils.translator - INFO - 正在使用模型 gemma3:27b 进行翻译...
+2025-05-21 06:21:58,654 - utils.translator - INFO - 字幕翻译完成，已保存到: /tmp/tmpfqwtkwuu.zh.srt
+2025-05-21 06:22:56,361 - utils.translator - INFO - 这是一条测试日志 - INFO
+2025-05-21 06:22:56,361 - utils.translator - WARNING - 这是一条测试日志 - WARNING
+2025-05-21 06:22:56,361 - utils.translator - ERROR - 这是一条测试日志 - ERROR

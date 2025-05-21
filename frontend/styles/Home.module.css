@@ -180,6 +180,16 @@
   color: white;
 }
 
+.downloadButton:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.downloadButton:disabled:hover {
+  background-color: white;
+  color: #0070f3;
+}
+
 .taskStatus {
   width: 100%;
   max-width: 800px;
@@ -337,4 +347,14 @@
 
 .toastContainer :global(.Toastify__toast--info) {
   background-color: #17a2b8;
+}
+
+.downloadStatus {
+  margin-top: 1rem;
+  text-align: center;
+}
+
+.downloadStatus p {
+  margin-bottom: 0.5rem;
+  color: #666;
 } 

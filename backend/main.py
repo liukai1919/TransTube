@@ -26,11 +26,19 @@ os.makedirs("downloads", exist_ok=True)
 os.makedirs("static/videos", exist_ok=True)
 os.makedirs("static/subtitles", exist_ok=True)
 
+# 设置目录权限
+for dir_path in ["downloads", "static/videos", "static/subtitles"]:
+    os.chmod(dir_path, 0o777)
+
 # 挂载静态文件目录
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # 全局任务状态
 tasks = {}
+
+# 获取服务器地址
+def get_server_url():
+    return os.getenv("SERVER_URL", "http://localhost:8000")
 
 class VideoURL(BaseModel):
     url: str
@@ -75,16 +83,16 @@ async def process_video(request: Request, background_tasks: BackgroundTasks):
 
 @app.get("/api/task/{task_id}")
 async def get_task_status(task_id: str):
+    """获取任务状态"""
     if task_id not in tasks:
-        raise HTTPException(status_code=404, detail="任务不存在")
-    
+        raise HTTPException(status_code=404, detail="Task not found")
     return tasks[task_id]
 
 def update_task_progress(task_id: str, message: str, progress: float):
     """更新任务进度"""
     if task_id in tasks:
         tasks[task_id]["message"] = message
-        tasks[task_id]["progress"] = progress
+        tasks[task_id]["progress"] = min(100, max(0, progress))  # 确保进度在0-100之间
         print(f"任务 {task_id}: {message} - {progress:.1f}%")
 
 async def process_video_task(task_id: str, url: str):
@@ -93,15 +101,20 @@ async def process_video_task(task_id: str, url: str):
         # 更新任务状态
         tasks[task_id]["status"] = "processing"
         
-        # 1. 下载视频
-        update_task_progress(task_id, "正在下载视频...", 5)
+        # 1. 下载视频 (0-20%)
+        update_task_progress(task_id, "正在下载视频...", 0)
         video_path, srt_path, vid, title = download_video(url, "downloads")
+        update_task_progress(task_id, "视频下载完成", 20)
         
         # 2. 创建视频处理器
         processor = VideoProcessor(
             chunk_duration=300,  # 5分钟一个切片
             max_workers=4,  # 4个并行工作线程
-            progress_callback=lambda msg, prog: update_task_progress(task_id, msg, 10 + prog * 0.85)
+            progress_callback=lambda msg, prog: update_task_progress(
+                task_id, 
+                msg, 
+                20 + (prog * 0.7)  # 20-90% 用于处理
+            )
         )
         
         # 3. 处理视频
@@ -112,8 +125,8 @@ async def process_video_task(task_id: str, url: str):
             burn_subtitle
         )
         
-        # 4. 移动文件到静态目录
-        update_task_progress(task_id, "正在保存结果...", 95)
+        # 4. 移动文件到静态目录 (90-100%)
+        update_task_progress(task_id, "正在保存结果...", 90)
         
         video_filename = f"{vid}_sub.mp4"
         srt_filename = f"{vid}_zh.srt"
@@ -123,7 +136,9 @@ async def process_video_task(task_id: str, url: str):
         
         # 使用 shutil.copy2 保留文件权限
         shutil.copy2(output_video, final_video_path)
+        update_task_progress(task_id, "正在保存视频...", 95)
         shutil.copy2(merged_srt, final_srt_path)
+        update_task_progress(task_id, "正在保存字幕...", 98)
         
         # 设置文件权限
         os.chmod(final_video_path, 0o644)
@@ -141,12 +156,13 @@ async def process_video_task(task_id: str, url: str):
             print(f"清理临时文件时出错: {str(e)}")
         
         # 更新任务结果
+        server_url = get_server_url()
         tasks[task_id]["status"] = "completed"
         tasks[task_id]["progress"] = 100
         tasks[task_id]["message"] = "处理完成"
         tasks[task_id]["result"] = {
-            "video_url": f"/static/videos/{video_filename}",
-            "srt_url": f"/static/subtitles/{srt_filename}"
+            "video_url": f"{server_url}/static/videos/{video_filename}",
+            "srt_url": f"{server_url}/static/subtitles/{srt_filename}"
         }
         
     except Exception as e:
