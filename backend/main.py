@@ -103,7 +103,7 @@ async def process_video_task(task_id: str, url: str):
         
         # 1. 下载视频 (0-20%)
         update_task_progress(task_id, "正在下载视频...", 0)
-        video_path, srt_path, vid, title = download_video(url, "downloads")
+        video_path, srt_path, vid, title, duration = download_video(url, "downloads")
         update_task_progress(task_id, "视频下载完成", 20)
         
         # 2. 创建视频处理器
@@ -160,10 +160,23 @@ async def process_video_task(task_id: str, url: str):
         tasks[task_id]["status"] = "completed"
         tasks[task_id]["progress"] = 100
         tasks[task_id]["message"] = "处理完成"
-        tasks[task_id]["result"] = {
-            "video_url": f"{server_url}/static/videos/{video_filename}",
-            "srt_url": f"{server_url}/static/subtitles/{srt_filename}"
-        }
+        
+        # 根据视频时长决定是否提供在线播放
+        if duration > 1800:  # 30分钟以上
+            tasks[task_id]["result"] = {
+                "video_url": None,  # 不提供在线播放
+                "srt_url": f"{server_url}/static/subtitles/{srt_filename}",
+                "download_url": f"{server_url}/static/videos/{video_filename}",
+                "duration": duration,
+                "title": title
+            }
+        else:
+            tasks[task_id]["result"] = {
+                "video_url": f"{server_url}/static/videos/{video_filename}",
+                "srt_url": f"{server_url}/static/subtitles/{srt_filename}",
+                "duration": duration,
+                "title": title
+            }
         
     except Exception as e:
         # 更新任务错误

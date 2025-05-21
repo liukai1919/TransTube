@@ -33,10 +33,42 @@ def extract_video_id(url: str) -> str:
     
     raise ValueError("无法从 URL 中提取视频 ID")
 
+def validate_transcript(transcript):
+    """
+    验证字幕数据格式
+    
+    Args:
+        transcript: 字幕数据
+        
+    Returns:
+        bool: 验证是否通过
+    """
+    if not isinstance(transcript, list):
+        raise ValueError(f"字幕数据格式错误：期望列表，得到 {type(transcript).__name__}")
+        
+    for i, item in enumerate(transcript):
+        if not isinstance(item, dict):
+            raise ValueError(f"字幕数据格式错误：第 {i+1} 项不是字典")
+            
+        required_fields = ['start', 'end', 'text']
+        missing_fields = [field for field in required_fields if field not in item]
+        if missing_fields:
+            raise ValueError(f"字幕数据格式错误：第 {i+1} 项缺少必要字段 {missing_fields}")
+            
+        # 验证时间戳格式
+        if not isinstance(item['start'], (int, float)) or not isinstance(item['end'], (int, float)):
+            raise ValueError(f"字幕数据格式错误：第 {i+1} 项的时间戳不是数字")
+            
+        # 验证文本格式
+        if not isinstance(item['text'], str):
+            raise ValueError(f"字幕数据格式错误：第 {i+1} 项的文本不是字符串")
+            
+    return True
+
 def download_video(url: str, download_dir: str):
     """
     下载视频和字幕
-    返回: (视频路径, 字幕路径, 视频ID, 视频标题)
+    返回: (视频路径, 字幕路径, 视频ID, 视频标题, 视频时长)
     """
     try:
         # 从URL中提取视频ID
@@ -71,7 +103,8 @@ def download_video(url: str, download_dir: str):
             info = ydl.extract_info(url, download=True)
             video_path = os.path.join(download_dir, f'{vid}.mp4')
             title = info.get('title', 'video')
-            logger.info(f"视频下载完成: {video_path}")
+            duration = info.get('duration', 0)  # 获取视频时长（秒）
+            logger.info(f"视频下载完成: {video_path}, 时长: {duration}秒")
             
         # 尝试获取字幕
         srt_path = None
@@ -82,6 +115,9 @@ def download_video(url: str, download_dir: str):
             try:
                 transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
                 logger.info("成功获取英文字幕")
+                
+                # 验证字幕数据格式
+                validate_transcript(transcript)
                 
                 # 转换为SRT格式
                 formatter = SRTFormatter()
@@ -106,9 +142,8 @@ def download_video(url: str, download_dir: str):
                         preserve_formatting=True
                     )
                     
-                    # 确保transcript是列表格式
-                    if isinstance(transcript, dict):
-                        transcript = [transcript]
+                    # 验证字幕数据格式
+                    validate_transcript(transcript)
                     
                     # 转换为SRT格式
                     formatter = SRTFormatter()
@@ -140,7 +175,7 @@ def download_video(url: str, download_dir: str):
             srt_path = None
             
         logger.info(f"下载完成。视频: {video_path}, 字幕: {srt_path if srt_path else '无'}")
-        return video_path, srt_path, vid, title
+        return video_path, srt_path, vid, title, duration
         
     except Exception as e:
         logger.error(f"视频下载过程中出错: {str(e)}")

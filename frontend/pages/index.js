@@ -241,7 +241,7 @@ export default function Home() {
         {result && (
           <div className={styles.result}>
             <h2>处理完成</h2>
-            {result.video_url && (
+            {result.video_url ? (
               <div className={styles.videoContainer}>
                 <video
                   key={result.video_url}   // 强制重新渲染
@@ -259,11 +259,17 @@ export default function Home() {
                   您的浏览器不支持视频播放
                 </video>
               </div>
+            ) : (
+              <div className={styles.longVideoNotice}>
+                <p>视频时长超过30分钟，请下载后观看</p>
+                <p>视频标题: {result.title}</p>
+                <p>视频时长: {Math.floor(result.duration / 60)}分{Math.floor(result.duration % 60)}秒</p>
+              </div>
             )}
             <div className={styles.buttons}>
-              {result.video_url && (
+              {(result.video_url || result.download_url) && (
                 <button
-                  onClick={() => handleDownload(result.video_url, `视频_${new Date().toISOString().split('T')[0]}.mp4`)}
+                  onClick={() => handleDownload(result.video_url || result.download_url, `视频_${new Date().toISOString().split('T')[0]}.mp4`)}
                   className={styles.downloadButton}
                   disabled={status === '正在下载...'}
                 >

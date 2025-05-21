@@ -357,4 +357,24 @@
 .downloadStatus p {
   margin-bottom: 0.5rem;
   color: #666;
+}
+
+.longVideoNotice {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 20px;
+  margin: 20px 0;
+  text-align: center;
+}
+
+.longVideoNotice p {
+  margin: 10px 0;
+  color: #495057;
+}
+
+.longVideoNotice p:first-child {
+  font-size: 1.2em;
+  font-weight: bold;
+  color: #212529;
 } 

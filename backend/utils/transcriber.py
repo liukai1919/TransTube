@@ -36,6 +36,9 @@ def check_audio_stream(video_path: str) -> bool:
 def init_whisper():
     """初始化 Whisper 模型"""
     try:
+        # 设置 PyTorch CUDA 内存分配器配置
+        os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+        
         # 检查 CUDA 是否可用
         if torch.cuda.is_available():
             logger.info("CUDA 可用，将使用 GPU 加速")
@@ -54,21 +57,41 @@ def init_whisper():
             # 设置设备
             device = "cuda"
             # 设置 CUDA 内存分配器
-            torch.cuda.set_per_process_memory_fraction(0.8)  # 使用 80% 的 GPU 内存
+            torch.cuda.set_per_process_memory_fraction(0.5)  # 只使用 50% 的 GPU 内存
             torch.cuda.empty_cache()  # 清空 GPU 缓存
+            
+            # 设置较小的批处理大小
+            batch_size = 1
         else:
             logger.info("CUDA 不可用，将使用 CPU")
             device = "cpu"
+            batch_size = 1
         
         # 加载模型
-        logger.info("正在加载 Whisper 模型...")
-        model = whisper.load_model("large-v3", device=device)
-        logger.info("Whisper 模型加载完成")
+        logger.info("正在加载 Whisper small 模型...")
+        model = whisper.load_model("small", device=device)
+        logger.info("Whisper small 模型加载完成")
         return model
         
     except Exception as e:
         logger.error(f"初始化 Whisper 失败: {str(e)}", exc_info=True)
         raise Exception(f"初始化语音识别失败: {str(e)}")
+
+def format_timestamp(seconds: float) -> str:
+    """
+    将秒数格式化为 SRT 时间戳格式 (HH:MM:SS,mmm)
+    
+    Args:
+        seconds: 秒数
+        
+    Returns:
+        str: 格式化的时间戳
+    """
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    seconds = seconds % 60
+    milliseconds = int((seconds - int(seconds)) * 1000)
+    return f"{hours:02d}:{minutes:02d}:{int(seconds):02d},{milliseconds:03d}"
 
 def transcribe_to_srt(video_path: str, lang="en") -> str:
     """
@@ -103,7 +126,10 @@ def transcribe_to_srt(video_path: str, lang="en") -> str:
             language=lang,
             task="transcribe",
             fp16=True if torch.cuda.is_available() else False,
-            verbose=True
+            verbose=True,
+            beam_size=1,   # 减少搜索空间
+            best_of=1,     # 只保留最佳结果
+            temperature=0  # 使用确定性采样
         )
         
         # 生成 SRT 文件
