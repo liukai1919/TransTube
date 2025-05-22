@@ -9,6 +9,7 @@ import subprocess
 import threading
 import time
 import logging
+import srt  # 添加 srt 模块导入
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Tuple, Optional, Callable
 from datetime import timedelta
@@ -198,140 +199,169 @@ class VideoProcessor:
     
     def adjust_subtitle_timing(self, srt_path: str, start_time: int) -> str:
         """调整字幕时间戳"""
-        import srt
-        
         try:
-            # 将开始时间转换为timedelta对象
-            start_timedelta = timedelta(seconds=start_time)
-            
-            # 读取SRT文件
             with open(srt_path, 'r', encoding='utf-8') as f:
                 subs = list(srt.parse(f.read()))
             
-            # 调整时间戳
+            # 调整每个字幕的时间戳
             for sub in subs:
-                sub.start = sub.start + start_timedelta
-                sub.end = sub.end + start_timedelta
+                sub.start = sub.start + timedelta(seconds=start_time)
+                sub.end = sub.end + timedelta(seconds=start_time)
             
             # 保存调整后的字幕
-            adjusted_path = srt_path.replace('.srt', f'.adjusted_{start_time}.srt')
+            adjusted_path = os.path.join(self.temp_dir, f"adjusted_{os.path.basename(srt_path)}")
             with open(adjusted_path, 'w', encoding='utf-8') as f:
                 f.write(srt.compose(subs))
-                
+            
             return adjusted_path
         except Exception as e:
             logger.error(f"调整字幕时间戳失败: {str(e)}")
-            raise Exception(f"调整字幕时间戳失败: {str(e)}")
+            raise
     
-    def merge_subtitles(self, processed_chunks: List[Dict]) -> str:
-        """合并所有字幕"""
-        import srt
-        
+    def merge_subtitles(self, subtitle_paths: List[str]) -> str:
+        """合并多个字幕文件"""
         try:
-            # 按索引排序
-            processed_chunks.sort(key=lambda x: x['index'])
-            
             all_subs = []
-            current_index = 1
-            
-            for chunk in processed_chunks:
-                # 调整字幕时间
-                adjusted_srt = self.adjust_subtitle_timing(
-                    chunk['zh_srt_path'], 
-                    chunk['start_time']
-                )
-                
-                # 读取调整后的字幕
-                with open(adjusted_srt, 'r', encoding='utf-8') as f:
+            for path in subtitle_paths:
+                with open(path, 'r', encoding='utf-8') as f:
                     subs = list(srt.parse(f.read()))
-                
-                # 更新字幕索引并添加到列表
-                for sub in subs:
-                    sub.index = current_index
-                    current_index += 1
-                    all_subs.append(sub)
+                    all_subs.extend(subs)
             
-            # 合并所有字幕
-            merged_srt = srt.compose(all_subs)
-            merged_path = os.path.join(self.temp_dir, f"merged_{uuid.uuid4()}.srt")
+            # 按时间排序
+            all_subs.sort(key=lambda x: x.start)
             
+            # 重新编号
+            for i, sub in enumerate(all_subs, 1):
+                sub.index = i
+            
+            # 保存合并后的字幕
+            merged_path = os.path.join(self.temp_dir, "merged.srt")
             with open(merged_path, 'w', encoding='utf-8') as f:
-                f.write(merged_srt)
-                
-            self.update_progress(f"已合并所有字幕", 1)
+                f.write(srt.compose(all_subs))
+            
             return merged_path
         except Exception as e:
             logger.error(f"合并字幕失败: {str(e)}")
-            raise Exception(f"合并字幕失败: {str(e)}")
+            raise
     
-    def process_video(self, video_path: str, transcribe_func: Callable, translate_func: Callable, burn_subtitle_func: Callable) -> Tuple[str, str]:
+    def process_video(self, video_path: str, transcribe_func: Callable, translate_func: Callable) -> Tuple[str, str]:
         """
-        处理完整视频
+        处理视频：切片、转录、翻译、合并
         
         Args:
-            video_path: 视频路径
-            transcribe_func: 转录函数，接收视频路径参数，返回SRT路径
-            translate_func: 翻译函数，接收SRT路径参数，返回翻译后的SRT路径
-            burn_subtitle_func: 烧录字幕函数，接收视频路径和SRT路径参数，返回输出视频路径
+            video_path: 视频文件路径
+            transcribe_func: 转录函数
+            translate_func: 翻译函数
             
         Returns:
-            Tuple[str, str]: (处理后的视频路径, 字幕文件路径)
+            Tuple[str, str]: (带字幕的视频路径, 合并后的中文字幕路径)
         """
         try:
-            # 重置进度
-            self.current_progress = 0
-            
+            # 检查视频文件是否已经是烧录了字幕的版本
+            video_name = os.path.basename(video_path)
+            if ".sub.mp4" in video_name:
+                logger.warning(f"视频文件名 '{video_name}' 含有 '.sub.mp4'，可能已经包含字幕。直接返回不处理。")
+                # 如果已经是处理过的视频，直接返回，不要重复处理
+                srt_path = os.path.splitext(video_path)[0] + ".srt"
+                if not os.path.exists(srt_path):
+                    # 创建一个空的字幕文件
+                    srt_path = os.path.join(os.path.dirname(video_path), f"{os.path.splitext(os.path.basename(video_path))[0]}.srt")
+                    with open(srt_path, 'w', encoding='utf-8') as f:
+                        f.write("")
+                return video_path, srt_path
+                
             # 获取视频时长
             duration = self.get_video_duration(video_path)
-            logger.info(f"视频时长: {duration}秒")
             
-            # 如果视频时长小于20分钟，直接处理整个视频
-            if duration <= 1200:  # 20分钟 = 1200秒
-                logger.info("视频时长小于20分钟，将直接处理整个视频")
+            # 短视频（小于20分钟）不切片，直接整体处理
+            if duration < 1200:  # 20分钟 = 1200秒
+                logger.info(f"视频较短 ({duration}秒)，跳过切片直接处理")
+                self.update_progress("视频较短，直接处理", 0)
+                
+                # 直接转录和翻译
                 self.update_progress("正在转录视频...", 0)
                 srt_path = transcribe_func(video_path)
-                self.update_progress("转录完成，正在翻译...", 50)
+                if not srt_path or not os.path.exists(srt_path):
+                    raise Exception("转录失败: 未生成有效的字幕文件")
+                self.update_progress("转录完成", 30)
+                
+                self.update_progress("正在翻译字幕...", 0)
                 zh_srt_path = translate_func(srt_path)
-                self.update_progress("翻译完成，正在烧录字幕...", 75)
-                output_video = burn_subtitle_func(video_path, zh_srt_path)
-                self.update_progress("处理完成!", 100)
+                if not zh_srt_path or not os.path.exists(zh_srt_path):
+                    raise Exception("翻译失败: 未生成有效的字幕文件")
+                self.update_progress("翻译完成", 30)
+                
+                # 烧录字幕
+                self.update_progress("正在烧录字幕...", 0)
+                from utils.subtitle_embedder import burn_subtitle
+                output_video = burn_subtitle(video_path, zh_srt_path)
+                
+                # 验证输出文件
+                if not os.path.exists(output_video):
+                    raise FileNotFoundError(f"字幕烧录失败，输出文件不存在: {output_video}")
+                    
+                file_size = os.path.getsize(output_video)
+                if file_size < 100000:  # 小于100KB可能有问题
+                    logger.warning(f"烧录字幕后的视频文件太小 ({file_size} bytes)，可能有问题")
+                
+                self.update_progress("字幕烧录完成", 30)
+                
                 return output_video, zh_srt_path
             
-            # 对于长视频，进行切片处理
-            self.update_progress("开始切分视频...", 0)
+            # 长视频，按原流程处理
+            # 1. 切片
             chunks = self.split_video(video_path)
             
-            # 2. 并行处理各个切片
-            processed_chunks = []
-            
+            # 2. 并行处理每个切片
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                futures = {
-                    executor.submit(
-                        self.process_chunk, 
-                        chunk, 
-                        transcribe_func, 
-                        translate_func
-                    ): chunk for chunk in chunks
-                }
+                futures = []
+                for chunk in chunks:
+                    future = executor.submit(self.process_chunk, chunk, transcribe_func, translate_func)
+                    futures.append(future)
                 
+                # 等待所有任务完成
+                results = []
                 for future in as_completed(futures):
                     try:
                         result = future.result()
-                        processed_chunks.append(result)
+                        results.append(result)
                     except Exception as e:
-                        logger.error(f"处理切片时出错: {str(e)}")
+                        logger.error(f"处理切片失败: {str(e)}")
                         raise
             
-            # 3. 合并字幕
-            self.update_progress("正在合并字幕...", 0)
-            merged_srt = self.merge_subtitles(processed_chunks)
+            # 3. 调整时间戳并合并字幕
+            srt_paths = []
+            zh_srt_paths = []
+            
+            for result in sorted(results, key=lambda x: x['index']):
+                # 调整时间戳
+                adjusted_srt = self.adjust_subtitle_timing(result['srt_path'], result['start_time'])
+                adjusted_zh_srt = self.adjust_subtitle_timing(result['zh_srt_path'], result['start_time'])
+                
+                srt_paths.append(adjusted_srt)
+                zh_srt_paths.append(adjusted_zh_srt)
+            
+            # 合并字幕
+            merged_srt = self.merge_subtitles(srt_paths)
+            merged_zh_srt = self.merge_subtitles(zh_srt_paths)
             
             # 4. 烧录字幕
-            self.update_progress("正在烧录字幕...", 0)
-            output_video = burn_subtitle_func(video_path, merged_srt)
-            self.update_progress("视频处理完成!", 1)
+            self.update_progress("正在烧录字幕到视频...", 0)
+            from utils.subtitle_embedder import burn_subtitle
+            output_video = burn_subtitle(video_path, merged_zh_srt)
             
-            return output_video, merged_srt
+            # 验证输出文件
+            if not os.path.exists(output_video):
+                raise FileNotFoundError(f"字幕烧录失败，输出文件不存在: {output_video}")
+                
+            file_size = os.path.getsize(output_video)
+            if file_size < 100000:  # 小于100KB可能有问题
+                logger.warning(f"烧录字幕后的视频文件太小 ({file_size} bytes)，可能有问题")
+            
+            self.update_progress("字幕烧录完成", 10)
+            
+            return output_video, merged_zh_srt
+            
         except Exception as e:
-            logger.error(f"视频处理失败: {str(e)}")
-            raise Exception(f"视频处理失败: {str(e)}") 
+            logger.error(f"处理视频失败: {str(e)}")
+            raise

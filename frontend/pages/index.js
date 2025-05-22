@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styles from '../styles/Home.module.css';
+import Link from 'next/link';
 
 // 简化版组件，避免复杂的 hooks 结构
 export default function Home() {
@@ -17,7 +18,7 @@ export default function Home() {
     if (taskId) {
       interval = setInterval(async () => {
         try {
-          const response = await fetch(`http://localhost:8000/api/task/${taskId}`);
+          const response = await fetch(`/api/task/${taskId}`);
           if (!response.ok) throw new Error('获取任务状态失败');
           
           const data = await response.json();
@@ -74,7 +75,7 @@ export default function Home() {
     setStatus('初始化中...');
 
     try {
-      const response = await fetch('http://localhost:8000/api/process', {
+      const response = await fetch('/api/process', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -193,8 +194,19 @@ export default function Home() {
   return (
     <div className={styles.container}>
       <main className={styles.main}>
-        <h1 className={styles.title}>YouTrans</h1>
-        <p className={styles.description}>YouTube 视频中文字幕生成器</p>
+        <h1 className={styles.title}>
+          视频翻译工具
+        </h1>
+
+        <p className={styles.description}>
+          输入视频URL，自动生成中文字幕
+        </p>
+
+        <div className={styles.links}>
+          <Link href="/videos" className={styles.link}>
+            查看已处理的视频
+          </Link>
+        </div>
 
         <form onSubmit={handleSubmit} className={styles.form}>
           <input

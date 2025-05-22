@@ -1,0 +1,50 @@
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.header {
+  margin-bottom: 2rem;
+}
+
+.backButton {
+  display: inline-flex;
+  align-items: center;
+  color: #666;
+  text-decoration: none;
+  font-size: 1rem;
+  transition: color 0.2s;
+}
+
+.backButton:hover {
+  color: #333;
+}
+
+.backButton::before {
+  content: "←";
+  margin-right: 0.5rem;
+}
+
+.videoContainer {
+  position: relative;
+  width: 100%;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.video {
+  width: 100%;
+  max-height: calc(100vh - 200px);
+  display: block;
+}
+
+.error {
+  color: #dc2626;
+  text-align: center;
+  padding: 1rem;
+  background-color: #fee2e2;
+  border-radius: 8px;
+  margin: 1rem 0;
+} 

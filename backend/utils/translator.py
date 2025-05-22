@@ -203,7 +203,7 @@ def translate_srt_to_zh(srt_path: str) -> str:
         # 读取字幕文件
         with open(srt_path, "r", encoding="utf-8") as fp:
             subs = list(srt.parse(fp.read()))
-        
+            
         logger.info(f"开始翻译字幕，共 {len(subs)} 条")
         
         # 分批翻译字幕
@@ -215,10 +215,10 @@ def translate_srt_to_zh(srt_path: str) -> str:
         
         with open(zh_path, "w", encoding="utf-8") as fp:
             fp.write(zh_srt)
-            
+                
         logger.info(f"字幕翻译完成，已保存到: {zh_path}")
-        return zh_path
-        
+        return zh_path 
+            
     except Exception as e:
         logger.error(f"字幕翻译失败: {str(e)}")
         raise Exception(f"字幕翻译失败: {str(e)}")

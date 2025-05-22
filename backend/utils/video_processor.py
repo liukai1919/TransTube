@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Callable
 import os
 import math
 import ffmpeg
@@ -8,6 +8,7 @@ import csv
 from concurrent.futures import ThreadPoolExecutor
 import psutil
 import GPUtil
+import pysrt
 
 logger = logging.getLogger(__name__)
 
@@ -268,68 +269,91 @@ def get_optimal_workers() -> int:
         
     return min(cpu_count - 1, gpu_workers)
 
-def process_video(video_path: str, output_dir: str, lang: str = "en") -> str:
-    """
-    处理视频文件
+def process_video(
+        video_path: str,
+        transcribe_func: Callable,
+        translate_func: Callable,
+        burn_func: Callable
+    ) -> Tuple[str, str]:
+        """处理视频：转写、翻译、烧录字幕"""
+        try:
+            # 1. 转写视频生成英文字幕
+            print("开始转写视频...")
+            srt_path = transcribe_func(video_path)
+            if not srt_path or not os.path.exists(srt_path):
+                raise Exception("转写失败：未生成字幕文件")
+            
+            # 2. 翻译字幕为中文
+            print("开始翻译字幕...")
+            zh_srt_path = translate_func(srt_path)
+            if not zh_srt_path or not os.path.exists(zh_srt_path):
+                raise Exception("翻译失败：未生成中文字幕文件")
+            
+            # 3. 烧录字幕到视频
+            print("开始烧录字幕...")
+            output_video = burn_func(video_path, zh_srt_path)
+            if not output_video or not os.path.exists(output_video):
+                raise Exception("烧录失败：未生成带字幕的视频文件")
+            
+            # 4. 优化字幕格式
+            print("优化字幕格式...")
+            optimized_srt = _optimize_subtitle_format(zh_srt_path)
+            
+            return output_video, optimized_srt
+            
+        except Exception as e:
+            print(f"处理视频时出错: {str(e)}")
+            raise
     
-    Args:
-        video_path: 视频文件路径
-        output_dir: 输出目录
-        lang: 语言代码
-        
-    Returns:
-        str: 生成的 SRT 文件路径
-    """
-    try:
-        # 创建性能监控器
-        monitor = PerformanceMonitor(os.path.join(output_dir, 'performance.csv'))
-        
-        # 分割视频
-        chunk_files = split_video(video_path, output_dir)
-        
-        # 计算最优线程池大小
-        max_workers = get_optimal_workers()
-        logger.info(f"使用 {max_workers} 个工作线程")
-        
-        # 处理切片
-        srt_files = []
-        retry_count = 0
-        max_retries = 3
-        
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = []
-            for chunk_path in chunk_files:
-                future = executor.submit(process_chunk, chunk_path, output_dir, lang)
-                futures.append(future)
+    def _optimize_subtitle_format(self, srt_path: str) -> str:
+        """优化字幕格式"""
+        try:
+            # 读取原始字幕
+            with open(srt_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # 解析字幕
+            subs = pysrt.open(srt_path)
+            
+            # 优化字幕格式
+            optimized_subs = []
+            for sub in subs:
+                # 1. 移除多余的空格
+                text = ' '.join(sub.text.split())
                 
-            for i, future in enumerate(futures):
-                try:
-                    srt_path, duration = future.result()
-                    srt_files.append((srt_path, duration))
+                # 2. 限制每行最大字符数（中文字符）
+                max_chars_per_line = 20
+                if len(text) > max_chars_per_line:
+                    # 在标点符号处换行
+                    punctuation = ['，', '。', '！', '？', '；', '：', '、']
+                    lines = []
+                    current_line = ''
                     
-                    # 计算性能指标
-                    fps = duration / (time.time() - monitor.start_time)
-                    monitor.log_metrics(i, duration, fps, retry_count)
+                    for char in text:
+                        current_line += char
+                        if len(current_line) >= max_chars_per_line and char in punctuation:
+                            lines.append(current_line)
+                            current_line = ''
                     
-                except Exception as e:
-                    logger.error(f"处理切片失败: {str(e)}")
-                    if retry_count < max_retries:
-                        retry_count += 1
-                        # 重新提交任务
-                        future = executor.submit(process_chunk, chunk_files[i], output_dir, lang)
-                        futures[i] = future
-                    else:
-                        raise
-                        
-        # 合并字幕
-        output_srt = os.path.join(output_dir, "output.srt")
-        merge_subtitles(srt_files, output_srt)
-        
-        # 保存性能指标
-        monitor.save_metrics()
-        
-        return output_srt
-        
-    except Exception as e:
-        logger.error(f"处理视频失败: {str(e)}")
-        raise 
+                    if current_line:
+                        lines.append(current_line)
+                    
+                    text = '\n'.join(lines)
+                
+                # 3. 设置字幕样式
+                sub.text = text
+                optimized_subs.append(sub)
+            
+            # 保存优化后的字幕
+            optimized_srt_path = srt_path.replace('.srt', '_optimized.srt')
+            with open(optimized_srt_path, 'w', encoding='utf-8') as f:
+                for sub in optimized_subs:
+                    f.write(f"{sub.index}\n")
+                    f.write(f"{sub.start} --> {sub.end}\n")
+                    f.write(f"{sub.text}\n\n")
+            
+            return optimized_srt_path
+            
+        except Exception as e:
+            print(f"优化字幕格式时出错: {str(e)}")
+            return srt_path 

@@ -147,4 +147,4 @@ def transcribe_to_srt(video_path: str, lang="en") -> str:
         
     except Exception as e:
         logger.error(f"转录失败: {str(e)}", exc_info=True)
-        raise Exception(f"转录失败: {str(e)}") 
+        raise Exception(f"转录失败: {str(e)}")

@@ -1,182 +1,187 @@
-# -*- coding: utf-8 -*-
-"""
-下载 YouTube 视频及其原字幕
-"""
 import os
-import subprocess
+import yt_dlp
 import json
-import tempfile
-import uuid
-import re
 import logging
-from yt_dlp import YoutubeDL
-from youtube_transcript_api import YouTubeTranscriptApi, _errors
-from youtube_transcript_api.formatters import SRTFormatter
 
-# 设置日志
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def extract_video_id(url: str) -> str:
-    """从 YouTube URL 中提取视频 ID"""
-    # 匹配各种 YouTube URL 格式
-    patterns = [
-        r'(?:v=|\/)([0-9A-Za-z_-]{11}).*',  # 标准格式
-        r'youtu\.be\/([0-9A-Za-z_-]{11})',   # 短链接
-        r'youtube\.com\/embed\/([0-9A-Za-z_-]{11})',  # 嵌入格式
-    ]
-    
-    for pattern in patterns:
-        match = re.search(pattern, url)
-        if match:
-            return match.group(1)
-    
-    raise ValueError("无法从 URL 中提取视频 ID")
+# Define DOWNLOAD_DIR as it's imported by main.py
+# Assuming it's a subdirectory named 'downloads' in the parent directory of 'utils'
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DOWNLOAD_DIR = os.path.join(BASE_DIR, "downloads")
 
-def validate_transcript(transcript):
-    """
-    验证字幕数据格式
-    
-    Args:
-        transcript: 字幕数据
-        
-    Returns:
-        bool: 验证是否通过
-    """
-    if not isinstance(transcript, list):
-        raise ValueError(f"字幕数据格式错误：期望列表，得到 {type(transcript).__name__}")
-        
-    for i, item in enumerate(transcript):
-        if not isinstance(item, dict):
-            raise ValueError(f"字幕数据格式错误：第 {i+1} 项不是字典")
-            
-        required_fields = ['start', 'end', 'text']
-        missing_fields = [field for field in required_fields if field not in item]
-        if missing_fields:
-            raise ValueError(f"字幕数据格式错误：第 {i+1} 项缺少必要字段 {missing_fields}")
-            
-        # 验证时间戳格式
-        if not isinstance(item['start'], (int, float)) or not isinstance(item['end'], (int, float)):
-            raise ValueError(f"字幕数据格式错误：第 {i+1} 项的时间戳不是数字")
-            
-        # 验证文本格式
-        if not isinstance(item['text'], str):
-            raise ValueError(f"字幕数据格式错误：第 {i+1} 项的文本不是字符串")
-            
-    return True
+if not os.path.exists(DOWNLOAD_DIR):
+    os.makedirs(DOWNLOAD_DIR)
+    os.chmod(DOWNLOAD_DIR, 0o777) # Ensure the directory is writable
 
-def download_video(url: str, download_dir: str):
+def download_youtube_video(url: str, cookies_path: str = None):
     """
-    下载视频和字幕
-    返回: (视频路径, 字幕路径, 视频ID, 视频标题, 视频时长)
+    Downloads a YouTube video using yt-dlp.
+    Returns a dictionary with video information.
     """
+    ydl_opts = {
+        'outtmpl': os.path.join(DOWNLOAD_DIR, '%(id)s.%(ext)s'),
+        'noplaylist': True,
+        'quiet': True,
+        'no_warnings': True,
+        'noprogress': True,
+        'logger': logger,
+        'writesubtitles': False,
+        'writeautomaticsub': False,
+    }
+    if cookies_path:
+        ydl_opts['cookiefile'] = cookies_path
+
     try:
-        # 从URL中提取视频ID
-        video_id = extract_video_id(url)
-        logger.info(f"提取到视频ID: {video_id}")
-        
-        # 生成唯一ID
-        vid = str(uuid.uuid4())
-        
-        # 设置下载选项
-        ydl_opts = {
-            # 下载最高质量的视频+音频并合并
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-            'outtmpl': os.path.join(download_dir, f'{vid}.%(ext)s'),
-            'merge_output_format': 'mp4',  # 确保输出为mp4格式
-            'postprocessors': [{
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4',
-            }],
-            # 可视化下载进度
-            'quiet': False,
-            'no_warnings': False,
-            'progress': True,
-            'skip_download': False,
-            # 使用 cookies 文件
-            'cookiefile': 'youtube.cookies',
-        }
-        
-        # 下载视频
-        with YoutubeDL(ydl_opts) as ydl:
-            logger.info(f"开始下载视频: {url}")
-            info = ydl.extract_info(url, download=True)
-            video_path = os.path.join(download_dir, f'{vid}.mp4')
-            title = info.get('title', 'video')
-            duration = info.get('duration', 0)  # 获取视频时长（秒）
-            logger.info(f"视频下载完成: {video_path}, 时长: {duration}秒")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # First, get video info without downloading
+            logger.info(f"Getting video info for {url}")
+            info_dict = ydl.extract_info(url, download=False)
             
-        # 尝试获取字幕
-        srt_path = None
-        try:
-            logger.info(f"尝试获取字幕，视频ID: {video_id}")
+            # Try to find a suitable format that's less likely to use SABR
+            # Prefer formats that are:
+            # 1. MP4 container
+            # 2. Have both video and audio
+            # 3. Are 1080p or lower (to avoid SABR while maintaining good quality)
+            suitable_formats = []
+            for f in info_dict.get('formats', []):
+                if (f.get('ext') == 'mp4' and 
+                    f.get('vcodec') != 'none' and 
+                    f.get('acodec') != 'none' and
+                    f.get('height', 0) <= 1080):  # Changed to 1080p
+                    suitable_formats.append(f)
             
-            # 尝试使用youtube_transcript_api获取字幕
-            try:
-                transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
-                logger.info("成功获取英文字幕")
-                
-                # 验证字幕数据格式
-                validate_transcript(transcript)
-                
-                # 转换为SRT格式
-                formatter = SRTFormatter()
-                srt_formatted = formatter.format_transcript(transcript)
-                
-                # 保存字幕文件
-                srt_path = os.path.join(download_dir, f'{vid}.srt')
-                with open(srt_path, 'w', encoding='utf-8') as f:
-                    f.write(srt_formatted)
-                
-                logger.info(f"字幕保存到: {srt_path}")
-            except _errors.TranscriptsDisabled:
-                logger.warning("视频禁用了字幕")
-                srt_path = None
-            except _errors.NoTranscriptFound:
-                logger.warning("未找到英文字幕，尝试自动生成的字幕")
-                try:
-                    # 获取自动生成的字幕
-                    transcript = YouTubeTranscriptApi.get_transcript(
-                        video_id,
-                        languages=['en'],
-                        preserve_formatting=True
-                    )
-                    
-                    # 验证字幕数据格式
-                    validate_transcript(transcript)
-                    
-                    # 转换为SRT格式
-                    formatter = SRTFormatter()
-                    srt_formatted = formatter.format_transcript(transcript)
-                    
-                    srt_path = os.path.join(download_dir, f'{vid}.srt')
-                    with open(srt_path, 'w', encoding='utf-8') as f:
-                        f.write(srt_formatted)
-                    logger.info(f"自动生成的字幕保存到: {srt_path}")
-                except Exception as inner_e:
-                    logger.warning(f"获取自动生成字幕失败: {str(inner_e)}")
-                    srt_path = None
-            except Exception as general_e:
-                logger.warning(f"获取字幕时出现一般错误: {str(general_e)}")
-                srt_path = None
-                
-        except Exception as e:
-            logger.error(f"字幕处理过程中出错: {str(e)}")
-            srt_path = None
-        
-        # 验证字幕文件是否有效
-        if srt_path and os.path.exists(srt_path):
-            # 检查文件大小和内容
-            if os.path.getsize(srt_path) < 10:  # 文件太小，可能是空的
-                logger.warning(f"字幕文件太小，可能无效: {srt_path}")
-                srt_path = None
-        else:
-            logger.warning("没有生成字幕文件或文件不存在")
-            srt_path = None
+            if not suitable_formats:
+                logger.warning("No suitable formats found, falling back to best format")
+                ydl_opts['format'] = 'best'
+            else:
+                # Sort by resolution (height) and pick the highest quality that's not too high
+                suitable_formats.sort(key=lambda x: x.get('height', 0), reverse=True)
+                best_format = suitable_formats[0]
+                format_id = best_format['format_id']
+                logger.info(f"Selected format: {format_id} ({best_format.get('height')}p, {best_format.get('ext')}, {best_format.get('vcodec')}, {best_format.get('acodec')})")
+                ydl_opts['format'] = format_id
+
+            # Now download with the selected format
+            logger.info(f"Downloading video with format: {ydl_opts['format']}")
+            info_dict = ydl.extract_info(url, download=True)
             
-        logger.info(f"下载完成。视频: {video_path}, 字幕: {srt_path if srt_path else '无'}")
-        return video_path, srt_path, vid, title, duration
-        
+            # Determine the final downloaded file path
+            downloaded_file_path = None
+            if 'requested_downloads' in info_dict and info_dict['requested_downloads']:
+                downloaded_file_path = info_dict['requested_downloads'][0]['filepath']
+            elif 'filename' in info_dict:
+                downloaded_file_path = info_dict['filename']
+            elif 'filepath' in info_dict:
+                downloaded_file_path = info_dict['filepath']
+            else:
+                video_id = info_dict.get('id', 'unknown_video')
+                guessed_path_mp4 = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp4")
+                if os.path.exists(guessed_path_mp4):
+                    downloaded_file_path = guessed_path_mp4
+                else:
+                    logger.error(f"Could not determine downloaded file path for {url}. Info: {info_dict}")
+                    raise yt_dlp.utils.DownloadError("Could not determine downloaded file path.")
+
+            if not downloaded_file_path or not os.path.exists(downloaded_file_path):
+                logger.error(f"Downloaded file path not found or file does not exist: {downloaded_file_path} for URL {url}")
+                raise yt_dlp.utils.DownloadError(f"Downloaded file path not found or file does not exist: {downloaded_file_path}")
+
+            return {
+                "filepath": downloaded_file_path,
+                "title": info_dict.get('title', 'Unknown Title'),
+                "duration": info_dict.get('duration', 0),
+                "filename": os.path.basename(downloaded_file_path),
+                "id": info_dict.get('id'),
+                "uploader": info_dict.get('uploader'),
+                "upload_date": info_dict.get('upload_date'),
+                "thumbnail": info_dict.get('thumbnail'),
+                "description": info_dict.get('description'),
+                "webpage_url": info_dict.get('webpage_url'),
+            }
+    except yt_dlp.utils.DownloadError as e:
+        logger.error(f"yt-dlp download error for URL {url}: {str(e)}")
+        raise
     except Exception as e:
-        logger.error(f"视频下载过程中出错: {str(e)}")
-        raise Exception(f"视频下载失败: {str(e)}")
+        logger.error(f"Unexpected error downloading video {url}: {str(e)}")
+        raise
+
+def list_downloaded_videos():
+    """
+    Lists metadata of downloaded videos.
+    It tries to find a .info.json file for each video.
+    """
+    videos = []
+    if not os.path.exists(DOWNLOAD_DIR):
+        return videos
+
+    for item in os.listdir(DOWNLOAD_DIR):
+        if item.endswith(('.mp4', '.mkv', '.webm')) and not item.startswith('.'): # Common video extensions
+            video_path = os.path.join(DOWNLOAD_DIR, item)
+            info_path = os.path.splitext(video_path)[0] + '.info.json' # yt-dlp often saves a .info.json
+
+            if os.path.exists(info_path):
+                try:
+                    with open(info_path, 'r', encoding='utf-8') as f:
+                        info = json.load(f)
+                    videos.append({
+                        "filename": item,
+                        "filepath": video_path,
+                        "title": info.get('title', 'Unknown Title'),
+                        "duration": info.get('duration', 0),
+                        "id": info.get('id'),
+                        "thumbnail": info.get('thumbnail'),
+                        "webpage_url": info.get('webpage_url'),
+                        "download_time": os.path.getmtime(video_path) # Add download time for sorting
+                    })
+                except Exception as e:
+                    logger.warning(f"Could not parse info file {info_path}: {e}")
+                    # Fallback if info.json is missing or corrupt
+                    videos.append({
+                        "filename": item,
+                        "filepath": video_path,
+                        "title": "Unknown Title (info missing)",
+                        "duration": 0, # Could try to get with ffprobe if needed
+                        "id": None,
+                        "thumbnail": None,
+                        "webpage_url": None,
+                        "download_time": os.path.getmtime(video_path)
+                    })
+            else:
+                 # Fallback if no .info.json, less metadata
+                videos.append({
+                    "filename": item,
+                    "filepath": video_path,
+                    "title": "Unknown Title (no info.json)",
+                    "duration": 0, # Could try to get with ffprobe if needed
+                    "id": None,
+                    "thumbnail": None,
+                    "webpage_url": None,
+                    "download_time": os.path.getmtime(video_path)
+                })
+    
+    # Sort by download time, newest first
+    videos.sort(key=lambda x: x['download_time'], reverse=True)
+    return videos
+
+# Example usage (optional, for testing)
+if __name__ == '__main__':
+    # Configure logging for standalone testing
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    
+    test_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ" # Example video
+    print(f"Attempting to download: {test_url}")
+    try:
+        video_info = download_youtube_video(test_url)
+        print("\nDownload successful!")
+        print(json.dumps(video_info, indent=4))
+    except Exception as e:
+        print(f"\nDownload failed: {e}")
+
+    print("\nListing downloaded videos:")
+    downloaded_list = list_downloaded_videos()
+    if downloaded_list:
+        for video in downloaded_list:
+            print(json.dumps(video, indent=2))
+    else:
+        print("No videos found in download directory.")
