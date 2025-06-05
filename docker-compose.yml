@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  # Redis 服务（可选，用于任务队列）
+  redis:
+    image: redis:7-alpine
+    container_name: transtube-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - transtube-network
+
+  # 后端 API 服务
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: transtube-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - CUDA_VISIBLE_DEVICES=0
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
+    volumes:
+      - ./backend:/app
+      - ./backend/downloads:/app/downloads
+      - ./backend/static:/app/static
+      - ./backend/logs:/app/logs
+      - ./backend/youtube.cookies:/app/youtube.cookies:ro
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    depends_on:
+      - redis
+    networks:
+      - transtube-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # 前端 Web 服务
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: transtube-web
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NODE_ENV=production
+    depends_on:
+      - api
+    networks:
+      - transtube-network
+
+  # Ollama 服务（本地 LLM）
+  ollama:
+    image: ollama/ollama:latest
+    container_name: transtube-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    networks:
+      - transtube-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  redis_data:
+    driver: local
+  ollama_data:
+    driver: local
+
+networks:
+  transtube-network:
+    driver: bridge 

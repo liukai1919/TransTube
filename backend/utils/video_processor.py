@@ -9,8 +9,62 @@ from concurrent.futures import ThreadPoolExecutor
 import psutil
 import GPUtil
 import pysrt
+import cv2
+import numpy as np
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
+from .transcriber import transcribe_to_srt
+from .translator import translate_srt_to_zh
+from .subtitle_embedder import burn_subtitle
 
 logger = logging.getLogger(__name__)
+
+# 定义视频输出目录 - 使用绝对路径
+OUTPUT_DIR = "/home/liukai1919/TransTube-1/backend/static/videos"
+
+# 确保输出目录存在
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+class VideoProcessor:
+    def __init__(self):
+        self.output_dir = OUTPUT_DIR
+        logger.info(f"视频输出目录: {self.output_dir}")
+    
+    def process_video(self, video_path: str, transcribe_func, translate_func, burn_func) -> tuple:
+        """
+        处理视频：转写、翻译、烧录字幕
+        """
+        try:
+            # 生成输出文件名
+            base_name = os.path.splitext(os.path.basename(video_path))[0]
+            # 统一使用 _sub.mp4 作为后缀
+            output_video = os.path.join(self.output_dir, f"{base_name}_sub.mp4")
+            output_srt = os.path.join(self.output_dir, f"{base_name}_zh.srt")
+            
+            # 转写生成英文字幕
+            logger.info("开始转写生成英文字幕...")
+            en_srt = transcribe_func(video_path)
+            if not en_srt:
+                raise Exception("转写失败")
+            
+            # 翻译成中文字幕
+            logger.info("开始翻译成中文字幕...")
+            zh_srt = translate_func(en_srt)
+            if not zh_srt:
+                raise Exception("翻译失败")
+            
+            # 保存中文字幕
+            with open(output_srt, 'w', encoding='utf-8') as f:
+                f.write(zh_srt)
+            
+            # 烧录字幕到视频
+            logger.info("开始烧录字幕...")
+            burn_func(video_path, zh_srt, output_video)
+            
+            return output_video, output_srt
+            
+        except Exception as e:
+            logger.error(f"视频处理失败: {str(e)}")
+            return None, None
 
 def get_optimal_chunk_duration(duration: float) -> int:
     """
@@ -267,93 +321,4 @@ def get_optimal_workers() -> int:
     except:
         gpu_workers = 1
         
-    return min(cpu_count - 1, gpu_workers)
-
-def process_video(
-        video_path: str,
-        transcribe_func: Callable,
-        translate_func: Callable,
-        burn_func: Callable
-    ) -> Tuple[str, str]:
-        """处理视频：转写、翻译、烧录字幕"""
-        try:
-            # 1. 转写视频生成英文字幕
-            print("开始转写视频...")
-            srt_path = transcribe_func(video_path)
-            if not srt_path or not os.path.exists(srt_path):
-                raise Exception("转写失败：未生成字幕文件")
-            
-            # 2. 翻译字幕为中文
-            print("开始翻译字幕...")
-            zh_srt_path = translate_func(srt_path)
-            if not zh_srt_path or not os.path.exists(zh_srt_path):
-                raise Exception("翻译失败：未生成中文字幕文件")
-            
-            # 3. 烧录字幕到视频
-            print("开始烧录字幕...")
-            output_video = burn_func(video_path, zh_srt_path)
-            if not output_video or not os.path.exists(output_video):
-                raise Exception("烧录失败：未生成带字幕的视频文件")
-            
-            # 4. 优化字幕格式
-            print("优化字幕格式...")
-            optimized_srt = _optimize_subtitle_format(zh_srt_path)
-            
-            return output_video, optimized_srt
-            
-        except Exception as e:
-            print(f"处理视频时出错: {str(e)}")
-            raise
-    
-    def _optimize_subtitle_format(self, srt_path: str) -> str:
-        """优化字幕格式"""
-        try:
-            # 读取原始字幕
-            with open(srt_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            # 解析字幕
-            subs = pysrt.open(srt_path)
-            
-            # 优化字幕格式
-            optimized_subs = []
-            for sub in subs:
-                # 1. 移除多余的空格
-                text = ' '.join(sub.text.split())
-                
-                # 2. 限制每行最大字符数（中文字符）
-                max_chars_per_line = 20
-                if len(text) > max_chars_per_line:
-                    # 在标点符号处换行
-                    punctuation = ['，', '。', '！', '？', '；', '：', '、']
-                    lines = []
-                    current_line = ''
-                    
-                    for char in text:
-                        current_line += char
-                        if len(current_line) >= max_chars_per_line and char in punctuation:
-                            lines.append(current_line)
-                            current_line = ''
-                    
-                    if current_line:
-                        lines.append(current_line)
-                    
-                    text = '\n'.join(lines)
-                
-                # 3. 设置字幕样式
-                sub.text = text
-                optimized_subs.append(sub)
-            
-            # 保存优化后的字幕
-            optimized_srt_path = srt_path.replace('.srt', '_optimized.srt')
-            with open(optimized_srt_path, 'w', encoding='utf-8') as f:
-                for sub in optimized_subs:
-                    f.write(f"{sub.index}\n")
-                    f.write(f"{sub.start} --> {sub.end}\n")
-                    f.write(f"{sub.text}\n\n")
-            
-            return optimized_srt_path
-            
-        except Exception as e:
-            print(f"优化字幕格式时出错: {str(e)}")
-            return srt_path 
+    return min(cpu_count - 1, gpu_workers) 

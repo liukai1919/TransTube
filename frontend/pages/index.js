@@ -11,6 +11,7 @@ export default function Home() {
   const [taskId, setTaskId] = useState(null);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState('');
+  const [deletingAll, setDeletingAll] = useState(false);
 
   // 轮询任务状态
   useEffect(() => {
@@ -29,18 +30,21 @@ export default function Home() {
             setResult(data.result);
             setLoading(false);
             clearInterval(interval);
+            setTaskId(null);
           } else if (data.status === 'failed') {
             setError(data.error || '处理失败');
             setLoading(false);
             clearInterval(interval);
+            setTaskId(null);
           }
         } catch (err) {
           console.error('获取任务状态失败:', err);
           setError('获取任务状态失败: ' + err.message);
           setLoading(false);
           clearInterval(interval);
+          setTaskId(null);
         }
-      }, 1000);
+      }, 2000);
     }
     return () => {
       if (interval) clearInterval(interval);
@@ -56,7 +60,7 @@ export default function Home() {
         if (!playable) {
           setError('视频无法在线播放，请尝试下载后观看');
         } else {
-          setError(null);          // 清空旧错误
+          // setError(null); // Clear old error only if playable, might hide other errors
         }
       })();
     }
@@ -73,18 +77,21 @@ export default function Home() {
     setResult(null);
     setProgress(0);
     setStatus('初始化中...');
+    setTaskId(null);
 
     try {
+      const formData = new FormData();
+      formData.append('video_url', url);
+      formData.append('target_lang', 'zh');
+
       const response = await fetch('/api/process', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ url }),
+        body: formData,
       });
 
       if (!response.ok) {
-        throw new Error(`请求失败 (${response.status}): ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+        throw new Error(`请求失败 (${response.status}): ${errorData.detail}`);
       }
 
       const data = await response.json();
@@ -101,66 +108,56 @@ export default function Home() {
     try {
       setError(null);
       setStatus('正在准备下载...');
+      setProgress(0);
       
-      // 先检查文件是否可访问
       const headResponse = await fetch(fileUrl, { method: 'HEAD' });
       if (!headResponse.ok) {
         throw new Error(`文件不可访问 (${headResponse.status})`);
       }
       
-      // 获取文件大小
       const contentLength = headResponse.headers.get('content-length');
       const totalSize = contentLength ? parseInt(contentLength, 10) : 0;
       
-      // 开始下载
       setStatus('正在下载...');
       const response = await fetch(fileUrl);
       if (!response.ok) {
         throw new Error(`下载失败 (${response.status})`);
       }
       
-      // 创建可读流
       const reader = response.body.getReader();
       let receivedLength = 0;
       const chunks = [];
       
       while(true) {
         const {done, value} = await reader.read();
-        
-        if (done) {
-          break;
-        }
-        
+        if (done) break;
         chunks.push(value);
         receivedLength += value.length;
-        
-        // 更新下载进度
         if (totalSize) {
-          const progress = (receivedLength / totalSize) * 100;
-          setProgress(progress);
-          setStatus(`下载中... ${progress.toFixed(1)}%`);
+          const downloadProgress = (receivedLength / totalSize) * 100;
+          setProgress(downloadProgress);
+          setStatus(`下载中... ${downloadProgress.toFixed(1)}%`);
+        } else {
+          setStatus(`已下载 ${(receivedLength / 1024 / 1024).toFixed(2)} MB`);
         }
       }
       
-      // 合并数据块
       const blob = new Blob(chunks);
-      
-      // 创建下载链接
-      const url = window.URL.createObjectURL(blob);
+      const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
+      a.href = downloadUrl;
       a.download = fileName;
-      
-      // 触发下载
       document.body.appendChild(a);
       a.click();
-      
-      // 清理
-      window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(downloadUrl);
       document.body.removeChild(a);
       
-      setStatus('下载完成');
-      setProgress(0);
+      setStatus('下载完成!');
+      setProgress(100);
+      setTimeout(() => {
+        setStatus('');
+        setProgress(0);
+      }, 3000);
       
     } catch (err) {
       console.error('下载出错:', err);
@@ -175,20 +172,44 @@ export default function Home() {
     return new Promise((resolve) => {
       const video = document.createElement('video');
       video.src = videoUrl;
-      
-      video.onloadeddata = () => {
-        resolve(true);
-      };
-      
-      video.onerror = () => {
-        resolve(false);
-      };
-      
-      // 设置超时
+      video.onloadeddata = () => resolve(true);
+      video.onerror = () => resolve(false);
+      video.onstalled = () => resolve(false);
       setTimeout(() => {
+        video.onloadeddata = null;
+        video.onerror = null;
+        video.onstalled = null;
         resolve(false);
-      }, 5000);
+      } , 5000);
     });
+  };
+
+  // 新增：处理删除所有视频和数据的函数
+  const handleDeleteAll = async () => {
+    if (!window.confirm('确定要删除所有已处理的视频、字幕和任务数据吗？此操作不可恢复。')) {
+      return;
+    }
+    setDeletingAll(true);
+    setError(null);
+    setStatus('正在删除所有数据...');
+    try {
+      const response = await fetch('/api/videos/all', { method: 'DELETE' });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || data.message || '删除失败');
+      }
+      setStatus(data.message || '所有数据已成功删除！');
+      setResult(null);
+    } catch (err) {
+      console.error('删除所有数据时出错:', err);
+      setError('删除所有数据时出错: ' + err.message);
+      setStatus('');
+    } finally {
+      setDeletingAll(false);
+      setTimeout(() => {
+        setStatus('');
+      }, 5000);
+    }
   };
 
   return (
@@ -202,10 +223,18 @@ export default function Home() {
           输入视频URL，自动生成中文字幕
         </p>
 
-        <div className={styles.links}>
+        <div className={styles.managementLinks}>
           <Link href="/videos" className={styles.link}>
             查看已处理的视频
           </Link>
+          <button 
+            onClick={handleDeleteAll} 
+            className={`${styles.button} ${styles.deleteButton}`}
+            disabled={loading || deletingAll}
+            title="删除所有已处理的视频、字幕和任务数据"
+          >
+            {deletingAll ? '删除中...' : '清空所有数据'}
+          </button>
         </div>
 
         <form onSubmit={handleSubmit} className={styles.form}>
@@ -215,13 +244,13 @@ export default function Home() {
             onChange={(e) => setUrl(e.target.value)}
             placeholder="输入 YouTube 视频链接"
             className={styles.input}
-            disabled={loading}
+            disabled={loading || deletingAll}
             required
           />
           <button 
             type="submit" 
             className={styles.button}
-            disabled={loading}
+            disabled={loading || deletingAll}
           >
             {loading ? '处理中...' : '开始处理'}
           </button>
@@ -247,70 +276,61 @@ export default function Home() {
         {error && (
           <div className={styles.error}>
             <p>{error}</p>
+            <button onClick={() => setError(null)} className={styles.dismissButton}>好的</button>
           </div>
         )}
 
         {result && (
           <div className={styles.result}>
             <h2>处理完成</h2>
-            {result.video_url ? (
-              <div className={styles.videoContainer}>
-                <video
-                  key={result.video_url}   // 强制重新渲染
-                  controls
-                  preload="metadata"
-                  crossOrigin="anonymous"
-                  className={styles.video}
-                  onError={(e) => {
-                    console.error('视频播放错误:', e);
-                    setError('视频播放失败，请尝试下载后观看');
-                  }}
-                  onLoadedData={() => setError(null)}
-                >
-                  <source src={result.video_url} type="video/mp4" />
-                  您的浏览器不支持视频播放
-                </video>
-              </div>
-            ) : (
-              <div className={styles.longVideoNotice}>
-                <p>视频时长超过30分钟，请下载后观看</p>
-                <p>视频标题: {result.title}</p>
-                <p>视频时长: {Math.floor(result.duration / 60)}分{Math.floor(result.duration % 60)}秒</p>
-              </div>
-            )}
-            <div className={styles.buttons}>
-              {(result.video_url || result.download_url) && (
-                <button
-                  onClick={() => handleDownload(result.video_url || result.download_url, `视频_${new Date().toISOString().split('T')[0]}.mp4`)}
-                  className={styles.downloadButton}
-                  disabled={status === '正在下载...'}
-                >
-                  {status === '正在下载...' ? '下载中...' : '下载视频'}
-                </button>
+            <div className={styles.resultItem}>
+              <h4>{result.title || '处理完成的视频'}</h4>
+              {result.video_url ? (
+                <div className={styles.videoContainer}>
+                  <video
+                    key={result.video_url}
+                    controls
+                    preload="metadata"
+                    crossOrigin="anonymous"
+                    className={styles.video}
+                    onError={(e) => {
+                      console.error('视频播放错误:', e);
+                      setError('视频播放失败，请尝试下载后观看');
+                    }}
+                    onLoadedData={() => setError(null)}
+                  >
+                    <source src={result.video_url} type="video/mp4" />
+                    您的浏览器不支持视频播放
+                  </video>
+                </div>
+              ) : (
+                <div className={styles.longVideoNotice}>
+                  <p>视频时长超过30分钟，请下载后观看</p>
+                  <p>视频标题: {result.title}</p>
+                  <p>视频时长: {Math.floor(result.duration / 60)}分{Math.floor(result.duration % 60)}秒</p>
+                </div>
               )}
-              {result.srt_url && (
-                <button
-                  onClick={() => handleDownload(result.srt_url, `字幕_${new Date().toISOString().split('T')[0]}.srt`)}
-                  className={styles.downloadButton}
-                  disabled={status === '正在下载...'}
-                >
-                  {status === '正在下载...' ? '下载中...' : '下载字幕'}
-                </button>
-              )}
-            </div>
-            {status && (
-              <div className={styles.downloadStatus}>
-                <p>{status}</p>
-                {progress > 0 && (
-                  <div className={styles.progressBar}>
-                    <div 
-                      className={styles.progressBarInner} 
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
+              <div className={styles.downloadLinks}>
+                {result.download_url && (
+                  <button
+                    onClick={() => handleDownload(result.download_url, result.title ? `${result.title.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_.-]/g, '_')}_sub.mp4` : 'video_sub.mp4')}
+                    className={styles.button}
+                    disabled={status.startsWith('下载中') || status === '正在准备下载...'}
+                  >
+                    下载视频 (MP4)
+                  </button>
+                )}
+                {result.srt_url && (
+                  <button
+                    onClick={() => handleDownload(result.srt_url, result.title ? `${result.title.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_.-]/g, '_')}_zh.srt` : 'subtitles_zh.srt')}
+                    className={styles.button}
+                    disabled={status.startsWith('下载中') || status === '正在准备下载...'}
+                  >
+                    下载字幕 (SRT)
+                  </button>
                 )}
               </div>
-            )}
+            </div>
           </div>
         )}
       </main>

@@ -61,4 +61,27 @@ Desktop.ini
 static/videos/
 static/subtitles/
 *.mp4
-*.srt 
+*.srt
+
+# Logs
+*.log
+logs/
+app.log
+
+# Downloads and temporary files
+downloads/
+*.tmp
+*.temp
+
+# Cookies and sensitive data
+*.cookies
+youtube.cookies
+
+# Large binary files
+*.tar.xz
+ffmpeg-release-amd64-nvidia.tar.xz
+
+# Backup files
+*~
+*.bak
+*.backup 

@@ -60,118 +60,257 @@ def sanitize_path_for_ffmpeg(file_path):
     
     return temp_file, temp_dir
 
-def burn_subtitle(video_path: str, srt_path: str) -> str:
-    """
-    将字幕烧录到视频中
-    """
-    logger.info(f"开始烧录字幕: 视频={video_path}, 字幕={srt_path}")
+def get_video_dimensions(video_path):
+    """获取视频尺寸"""
+    cmd = [
+        'ffprobe',
+        '-v', 'error',
+        '-select_streams', 'v:0',
+        '-show_entries', 'stream=width,height',
+        '-of', 'json',
+        video_path
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise Exception(f"获取视频尺寸失败: {result.stderr}")
     
-    # 检查文件是否存在
-    if not os.path.exists(video_path):
-        raise FileNotFoundError(f"视频文件不存在: {video_path}")
-    if not os.path.exists(srt_path):
-        raise FileNotFoundError(f"字幕文件不存在: {srt_path}")
-    
-    # 处理文件路径中的特殊字符
-    temp_video_path, temp_video_dir = sanitize_path_for_ffmpeg(video_path)
-    temp_srt_path, temp_srt_dir = sanitize_path_for_ffmpeg(srt_path)
+    import json
+    data = json.loads(result.stdout)
+    width = int(data['streams'][0]['width'])
+    height = int(data['streams'][0]['height'])
+    return width, height
 
+def calculate_subtitle_style(width, height):
+    """根据视频尺寸和宽高比智能计算字幕样式"""
+    
+    # 计算宽高比
+    aspect_ratio = width / height
+    
+    # 判断视频类型
+    if aspect_ratio > 1.7:  # 超宽屏 (21:9 等)
+        video_type = "ultrawide"
+    elif aspect_ratio > 1.5:  # 标准宽屏 (16:9, 16:10 等)
+        video_type = "widescreen" 
+    elif aspect_ratio > 1.2:  # 传统宽屏 (4:3 等)
+        video_type = "standard"
+    else:  # 竖屏或方形
+        video_type = "portrait"
+    
+    # 根据分辨率类别调整参数
+    if height >= 2160:  # 4K
+        resolution_class = "4k"
+        base_font_ratio = 0.010  # 进一步减少到1.0%（之前是1.2%）
+        margin_ratio = 0.015
+    elif height >= 1440:  # 2K/1440p
+        resolution_class = "2k"
+        base_font_ratio = 0.012  # 进一步减少到1.2%（之前是1.4%）
+        margin_ratio = 0.018
+    elif height >= 1080:  # 1080p
+        resolution_class = "1080p"
+        base_font_ratio = 0.013  # 进一步减少到1.3%（之前是1.5%）
+        margin_ratio = 0.02
+    elif height >= 720:  # 720p
+        resolution_class = "720p"
+        base_font_ratio = 0.015  # 进一步减少到1.5%（之前是1.8%）
+        margin_ratio = 0.025
+    else:  # 480p及以下
+        resolution_class = "sd"
+        base_font_ratio = 0.018  # 进一步减少到1.8%（之前是2.2%）
+        margin_ratio = 0.03
+    
+    # 根据视频类型调整
+    if video_type == "portrait":
+        # 竖屏视频需要调整
+        base_font_ratio *= 1.2  # 竖屏字体稍大
+        margin_ratio *= 0.8     # 竖屏边距稍小
+        alignment = 2           # 居中
+        margin_l = int(width * 0.05)  # 左右边距按宽度比例
+        margin_r = int(width * 0.05)
+    elif video_type == "ultrawide":
+        # 超宽屏视频
+        base_font_ratio *= 0.9  # 超宽屏字体稍小
+        margin_ratio *= 1.1     # 边距稍大
+        alignment = 2           # 居中
+        margin_l = int(width * 0.1)   # 超宽屏左右边距更大
+        margin_r = int(width * 0.1)
+    else:
+        # 标准宽屏
+        alignment = 2
+        margin_l = 20
+        margin_r = 20
+    
+    # 计算最终参数
+    base_font_size = int(height * base_font_ratio)
+    
+    # 字体大小限制
+    if resolution_class == "4k":
+        font_size = max(12, min(base_font_size, 24))  # 减少到12-24px（之前是14-28px）
+    elif resolution_class == "2k":
+        font_size = max(10, min(base_font_size, 20))  # 减少到10-20px（之前是12-24px）
+    elif resolution_class == "1080p":
+        font_size = max(8, min(base_font_size, 16))   # 减少到8-16px（之前是10-20px）
+    elif resolution_class == "720p":
+        font_size = max(6, min(base_font_size, 12))   # 减少到6-12px（之前是8-16px）
+    else:  # SD
+        font_size = max(5, min(base_font_size, 10))   # 减少到5-10px（之前是6-12px）
+    
+    margin_v = int(height * margin_ratio)
+    
+    # 根据分辨率调整描边和阴影
+    if height >= 1440:
+        outline_width = 1.5
+        shadow_depth = 2
+    elif height >= 720:
+        outline_width = 1
+        shadow_depth = 1
+    else:
+        outline_width = 0.8
+        shadow_depth = 1
+    
+    # 构建样式字符串
+    style = (
+        f"FontName=Noto Sans SC,"
+        f"FontSize={font_size},"
+        f"PrimaryColour=&HFFFFFF&,"
+        f"OutlineColour=&H000000&,"
+        f"Outline={outline_width},"
+        f"ShadowColour=&H000000&,"
+        f"ShadowDepth={shadow_depth},"
+        f"BorderStyle=1,"
+        f"Alignment={alignment},"
+        f"MarginV={margin_v},"
+        f"MarginL={margin_l},"
+        f"MarginR={margin_r}"
+    )
+    
+    logger.info(f"视频类型: {video_type}, 分辨率等级: {resolution_class}, "
+                f"宽高比: {aspect_ratio:.2f}, 字体大小: {font_size}, "
+                f"边距: V={margin_v} L={margin_l} R={margin_r}")
+    
+    return style
+
+def burn_subtitle(video_path: str, srt_path: str, output_file_path: str) -> str:
+    """
+    将字幕烧录到视频中，使用 GPU 加速，失败时回退到 CPU
+    output_file_path: 指定的最终输出文件路径
+    """
+    temp_video_dir = None
+    temp_srt_dir = None
+    temp_output_dir = None
     try:
-        # 创建临时输出文件 (使用临时目录确保无特殊字符)
+        # 验证输入文件
+        if not os.path.exists(video_path):
+            raise FileNotFoundError(f"视频文件不存在: {video_path}")
+        if not os.path.exists(srt_path):
+            raise FileNotFoundError(f"字幕文件不存在: {srt_path}")
+        
+        logger.info(f"开始烧录字幕，视频: {video_path}, 字幕: {srt_path}")
+
+        # 获取视频尺寸
+        width, height = get_video_dimensions(video_path)
+        logger.info(f"视频尺寸: {width}x{height}")
+        
+        # 计算字幕样式
+        subtitle_style = calculate_subtitle_style(width, height)
+        logger.info(f"字幕样式: {subtitle_style}")
+
+        # 创建临时目录
+        temp_video_dir = tempfile.mkdtemp()
+        temp_srt_dir = tempfile.mkdtemp()
         temp_output_dir = tempfile.mkdtemp()
+        
+        # 复制视频和字幕到临时目录
+        temp_video_filename = "input_video" + os.path.splitext(video_path)[1]
+        temp_video_path = os.path.join(temp_video_dir, temp_video_filename)
+        temp_srt_internal_path = os.path.join(temp_srt_dir, "subtitles.srt")
+
+        shutil.copy2(video_path, temp_video_path)
+        shutil.copy2(srt_path, temp_srt_internal_path)
+        
+        # 设置输出路径
         output_path = os.path.join(temp_output_dir, "output.mp4")
         
-        # 查找可用字体并构建 filter 字符串
-        font_path = find_available_font()
-        if font_path:
-            force_style = f"FontName={os.path.basename(font_path)},FontSize=18"
-            filter_str = f"subtitles={temp_srt_path}:fontsdir={os.path.dirname(font_path)}:force_style='{force_style}'"
-        else:
-            filter_str = f"subtitles={temp_srt_path}:force_style=FontSize=18"
-        
-        # 检查是否支持 GPU
-        use_gpu = check_gpu_support()
-        
-        # 构建基础命令
-        command = [
-            'ffmpeg', '-hide_banner',
-            '-i', temp_video_path,
-            '-vf', filter_str,
-        ]
-        
-        # 根据是否支持 GPU 添加编码器参数
-        if use_gpu:
-            command.extend([
-                '-c:v', 'h264_nvenc',  # 使用 NVIDIA 硬件编码器
-                '-preset', 'p4',  # NVENC 预设
-                '-tune', 'hq',  # 高质量调优
-                '-rc', 'vbr',  # 可变比特率
-                '-cq', '23',  # 质量参数
-                '-b:v', '0',  # 自动比特率
-                '-spatial-aq', '1',  # 空间自适应量化
-                '-temporal-aq', '1',  # 时间自适应量化
-            ])
-        else:
-            command.extend([
-                '-c:v', 'libx264',  # 使用 CPU 编码器
+        # 构建字幕滤镜
+        subtitle_filter_value = f"subtitles={temp_srt_internal_path}:force_style='{subtitle_style}'"
+        logger.info(f"FFmpeg subtitles filter: {subtitle_filter_value}")
+
+        # 首先尝试GPU编码
+        gpu_success = False
+        try:
+            logger.info("尝试使用GPU编码...")
+            cmd_gpu = [
+                'ffmpeg',
+                '-i', temp_video_path,
+                '-vf', subtitle_filter_value,
+                '-c:v', 'h264_nvenc',
+                '-preset', 'p4',
+                '-rc', 'vbr',
+                '-cq', '19',
+                '-b:v', '0',
+                '-c:a', 'copy',
+                '-y',
+                output_path
+            ]
+            
+            logger.info(f"Executing GPU command: {' '.join(cmd_gpu)}")
+            result = subprocess.run(cmd_gpu, check=True, capture_output=True, text=True)
+            gpu_success = True
+            logger.info("GPU编码成功")
+            
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"GPU编码失败，回退到CPU编码. FFmpeg stderr: {e.stderr}")
+            
+            # 回退到CPU编码
+            cmd_cpu = [
+                'ffmpeg',
+                '-i', temp_video_path,
+                '-vf', subtitle_filter_value,
+                '-c:v', 'libx264',
                 '-preset', 'medium',
                 '-crf', '23',
-                '-profile:v', 'high',
-                '-level', '4.0',
-            ])
-        
-        # 添加通用参数
-        command.extend([
-            '-pix_fmt', 'yuv420p',  # 像素格式，确保兼容性
-            '-movflags', '+faststart',  # 优化网络播放
-            '-c:a', 'copy',  # 复制音频流
-            '-y',  # 覆盖已存在的文件
-            '-threads', '0',  # 自动选择线程数
-            output_path
-        ])
-        
-        # 打印完整命令以便调试
-        logger.info("Running: " + " ".join(command))
-        
-        # 执行命令
-        result = subprocess.run(command, capture_output=True, text=True)
-        if result.stderr:
-            logger.warning(f"FFmpeg 警告: {result.stderr}")
-        result.check_returncode()  # 这会抛出异常并包含完整的 stderr
+                '-c:a', 'copy',
+                '-y',
+                output_path
+            ]
+            
+            logger.info(f"Executing CPU command: {' '.join(cmd_cpu)}")
+            result = subprocess.run(cmd_cpu, check=True, capture_output=True, text=True)
+            logger.info("CPU编码成功")
         
         # 验证输出文件
         if not os.path.exists(output_path):
-            raise FileNotFoundError(f"FFmpeg 未能生成输出文件: {output_path}")
-        
+            raise FileNotFoundError("FFmpeg 输出文件不存在")
+            
         file_size = os.path.getsize(output_path)
-        logger.info(f"FFmpeg 生成的文件大小: {file_size / (1024*1024):.2f} MB")
+        logger.info(f"输出文件大小: {file_size / (1024*1024):.2f} MB")
         
         if file_size < 100000:  # 小于100KB可能有问题
             logger.warning(f"输出文件太小 ({file_size} bytes)，可能有问题")
         
-        # 将输出文件复制到原始视频所在目录，并命名为"原文件名.sub.mp4"
-        original_dir = os.path.dirname(video_path)
-        original_name = os.path.basename(video_path).rsplit('.', 1)[0]
-        final_output_path = os.path.join(original_dir, f"{original_name}.sub.mp4")
+        # 确保目标目录存在
+        Path(output_file_path).parent.mkdir(parents=True, exist_ok=True)
         
-        # 复制文件
-        shutil.copy2(output_path, final_output_path)
-        logger.info(f"成功将输出文件复制到: {final_output_path}")
+        # 复制文件到指定的 output_file_path
+        shutil.copy2(output_path, output_file_path)
+        logger.info(f"成功将输出文件复制到: {output_file_path}")
         
-        return final_output_path
+        return output_file_path
     
     except subprocess.CalledProcessError as e:
         logger.error(f"FFmpeg 错误: {e.stderr}")
-        raise Exception(f"字幕烧录失败: {str(e)}")
+        raise Exception(f"字幕烧录失败: {str(e)}") 
     
     finally:
         # 清理临时文件和目录
         try:
-            if os.path.exists(temp_video_dir):
+            if temp_video_dir and os.path.exists(temp_video_dir):
                 shutil.rmtree(temp_video_dir)
-            if os.path.exists(temp_srt_dir):
+                logger.info(f"已清理临时视频目录: {temp_video_dir}")
+            if temp_srt_dir and os.path.exists(temp_srt_dir):
                 shutil.rmtree(temp_srt_dir)
-            if os.path.exists(temp_output_dir):
+                logger.info(f"已清理临时字幕目录: {temp_srt_dir}")
+            if temp_output_dir and os.path.exists(temp_output_dir):
                 shutil.rmtree(temp_output_dir)
+                logger.info(f"已清理临时输出目录: {temp_output_dir}")
         except Exception as e:
             logger.warning(f"清理临时文件时出错: {str(e)}") 

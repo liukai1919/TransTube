@@ -192,15 +192,48 @@
 
 .taskStatus {
   width: 100%;
-  max-width: 800px;
-  margin-top: 2rem;
-  padding: 2rem;
-  background-color: white;
-  border-radius: 12px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  margin-top: 20px;
+}
+
+.managementLinks {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 25px;
+}
+
+.deleteButton {
+  background-color: #e74c3c;
+  color: white;
+}
+
+.deleteButton:hover {
+  background-color: #c0392b;
+}
+
+.deleteButton:disabled {
+  background-color: #f5b7b1;
+  cursor: not-allowed;
+}
+
+.dismissButton {
+  background-color: #3498db;
+  color: white;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-top: 10px;
+  font-size: 0.9em;
+}
+
+.dismissButton:hover {
+  background-color: #2980b9;
 }
 
 .progress {
+  display: flex;
   margin-bottom: 2rem;
 }
 

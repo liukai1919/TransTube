@@ -1,0 +1,34 @@
+{
+  "id": "f3dfbf18-0f54-48b4-a7f7-36298c05e3cb",
+  "video_url": "https://www.youtube.com/watch?v=mBRdA2qSITA",
+  "target_lang": "zh",
+  "status": "completed",
+  "progress": 100,
+  "message": "处理完成",
+  "stage": "embedding",
+  "created_at": "2025-06-04T18:17:12.415029",
+  "updated_at": "2025-06-04T18:20:11.270616",
+  "result": {
+    "video_url": "http://127.0.0.1:8000/static/videos/mBRdA2qSITA_sub.mp4",
+    "srt_url": "http://127.0.0.1:8000/static/subtitles/mBRdA2qSITA_zh.srt",
+    "download_url": "http://127.0.0.1:8000/static/videos/mBRdA2qSITA_sub.mp4",
+    "duration": 621,
+    "title": "AgenticSeek: FULLY FREE Manus Alternative with UI! Generalist AI Agent! (Opensource)",
+    "processing_method": "完整处理"
+  },
+  "output_path": "/home/liukai1919/TransTube-1/backend/static/videos/mBRdA2qSITA_sub.mp4",
+  "srt_path": "/home/liukai1919/TransTube-1/backend/static/subtitles/mBRdA2qSITA_zh.srt",
+  "video_info": {
+    "filepath": "/home/liukai1919/TransTube-1/backend/downloads/mBRdA2qSITA.webm",
+    "title": "AgenticSeek: FULLY FREE Manus Alternative with UI! Generalist AI Agent! (Opensource)",
+    "duration": 621,
+    "filename": "mBRdA2qSITA.webm",
+    "id": "mBRdA2qSITA",
+    "uploader": "WorldofAI",
+    "upload_date": "20250527",
+    "thumbnail": "https://i.ytimg.com/vi_webp/mBRdA2qSITA/maxresdefault.webp",
+    "description": "Build your AI superpowers today with Perplexity + Zapier! https://zapier.com/apps/perplexity/integrations 🤖✨\nUse Zapier MCP and Zapier Agents to automate smart responses, summaries, and insights—triggered by real-time events.\n\n🆓 Agents are free with your Zapier account (400 activities/month on the free tier) Plus, kickstart your automation journey with a 2-week free trial!\n👉 Sign up now and start building! https://try.zapier.com/worldofai\n\nSay hello to AgenticSeek, the powerful open-source generalist AI agent that rivals Manus—but it's 100% FREE and comes with an intuitive user interface! In this video, we explore how AgenticSeek automates complex tasks, interacts via an agentic workflow, and features a visual UI to make managing tasks seamless and developer-friendly. Whether you’re into autonomous coding, multi-agent collaboration, or just want a plug-and-play generalist agent, AgenticSeek is a game-changer!\n\n[🔗 My Links]:\nSponsor a Video or Do a Demo of Your Product, Contact me: intheworldzofai@gmail.com\n🔥 Become a Patron (Private Discord): https://patreon.com/WorldofAi\n☕ To help and Support me, Buy a Coffee or Donate to Support the Channel: https://ko-fi.com/worldofai - It would mean a lot if you did! Thank you so much, guys! Love yall\n🧠 Follow me on Twitter: https://twitter.com/intheworldofai \n🚨 Subscribe To The SECOND Channel: https://www.youtube.com/@UCYwLV1gDwzGbg7jXQ52bVnQ \n🚨 Subscribe To The FREE AI Newsletter For Regular AI Updates: https://intheworldofai.com/\n📅 Book a 1-On-1 Consulting Call With Me: https://calendly.com/worldzofai/ai-consulting-call-1\n👩‍💻  My Recommended AI Engineer course is Scrimba: https://v2.scrimba.com/the-ai-engineer-path-c02v?via=worldofai\"\n👾 Join the World of AI Discord! : https://discord.gg/NPf8FCn4cD\n\n[Must Watch]:\nAugment Code UPDATE: RIP Cursor! NEW AGENT! AI Software Engineer Automates Your Code! (New Agent): https://youtu.be/0rAub1uA_mU\nNEW Qwen Web Dev: FULLY FREE AI Coder! Develop a Full-stack App Without Writing ANY Code!: https://youtu.be/FovSqxaSwTI\nBest FREE AI Video Generator! Text-To-Video AI Generator! (HeyGen): https://youtu.be/VF86isn1yHM\n\n[Link's Used]:\nGithub Repo: https://github.com/Fosowl/agenticSeek\nGit Download: https://git-scm.com/downloads\nVS Code Download: https://code.visualstudio.com/download\nPython: https://www.python.org/downloads/\nDocker Desktop: https://www.docker.com/products/docker-desktop/\nOpenRouter: https://openrouter.ai/settings/keys\n\n👉 Why Watch?\nFully open-source 🧠\nNo waitlist or paywall 🔓\nVisual UI for agent management 🎛️\nAutonomous task execution 🤖\nPerfect Manus alternative ✅\nExtendable and dev-friendly 🔧\n\n🎬 What You'll Learn:\nHow to install and run AgenticSeek locally or in the cloud\nUse cases for autonomous workflows\nHow it compares to Manus and other agentic tools\nIntegration with LLMs for general-purpose problem solving\n\n💡 Whether you're a developer, researcher, or tech enthusiast, AgenticSeek gives you the freedom to explore generalist AI agents with full transparency and flexibility.\n📢 Let me know in the comments what you'd build with AgenticSeek!\n\n📚 Tags (split by commas):\nAgenticSeek, open source AI agent, Manus alternative, generalist AI agent, agentic workflows, AI automation, AI developer tools, AI task manager, open source generalist agent, AI with UI, open source autonomous agent, LLM agent, developer AI tools, AI assistant tools, GPT agents, build AI agent, free AI tools\n\n🔖 Hashtags:\n#AgenticSeek #AItools #OpenSource #AIautomation #GeneralistAgent #ManusAlternative #DeveloperTools #AIAssistant #FreeAI #OpenSourceAI 🤖🧠💻✨",
+    "webpage_url": "https://www.youtube.com/watch?v=mBRdA2qSITA"
+  },
+  "completed_at": "2025-06-04T18:20:43.165412"
+}
