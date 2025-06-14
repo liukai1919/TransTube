@@ -5,4 +5,5 @@ openai>=1.19
 whisper-timestamped
 srt
 python-dotenv
-ffmpeg-python 
+ffmpeg-python
+gTTS
