@@ -1,0 +1,34 @@
+{
+  "id": "1ad14b33-d97b-4da8-99a6-cbf84441ab5d",
+  "video_url": "https://www.youtube.com/watch?v=mJMvFyBvZEk&t=2s",
+  "target_lang": "zh",
+  "status": "completed",
+  "progress": 100,
+  "message": "处理完成",
+  "stage": "embedding",
+  "created_at": "2025-06-11T16:22:31.300012",
+  "updated_at": "2025-06-11T16:26:31.870251",
+  "result": {
+    "video_url": "http://127.0.0.1:8000/static/videos/mJMvFyBvZEk_sub.mp4",
+    "srt_url": "http://127.0.0.1:8000/static/subtitles/mJMvFyBvZEk_zh.srt",
+    "download_url": "http://127.0.0.1:8000/static/videos/mJMvFyBvZEk_sub.mp4",
+    "duration": 1404,
+    "title": "WWDC25: Meet the Foundation Models framework | Apple",
+    "processing_method": "完整处理"
+  },
+  "output_path": "/home/liukai1919/TransTube-1/backend/static/videos/mJMvFyBvZEk_sub.mp4",
+  "srt_path": "/home/liukai1919/TransTube-1/backend/static/subtitles/mJMvFyBvZEk_zh.srt",
+  "video_info": {
+    "filepath": "/home/liukai1919/TransTube-1/backend/downloads/mJMvFyBvZEk.mp4",
+    "title": "WWDC25: Meet the Foundation Models framework | Apple",
+    "duration": 1404,
+    "filename": "mJMvFyBvZEk.mp4",
+    "id": "mJMvFyBvZEk",
+    "uploader": "Apple Developer",
+    "upload_date": "20250609",
+    "thumbnail": "https://i.ytimg.com/vi_webp/mJMvFyBvZEk/maxresdefault.webp",
+    "description": "Learn how to tap into the on-device large language model behind Apple Intelligence! This high-level overview covers everything from guided generation for generating Swift data structures and streaming for responsive experiences, to tool calling for integrating data sources and sessions for context management. This session has no prerequisites.\n\nExplore related documentation, sample code, and more:\nHuman Interface Guidelines: Generative AI: https://developer.apple.com/design/human-interface-guidelines/generative-ai\nDiscover machine learning & AI frameworks on Apple platforms: https://developer.apple.com/videos/play/wwdc2025/360\nExplore prompt design & safety for on-device foundation models: https://developer.apple.com/videos/play/wwdc2025/248\nCode-along: Bring on-device AI to your app using the Foundation Models framework: https://developer.apple.com/videos/play/wwdc2025/259\nDeep dive into the Foundation Models framework: https://developer.apple.com/videos/play/wwdc2025/301\n\n00:00 - Introduction\n02:05 - The model\n05:20 - Guided generation\n07:45 - Snapshot streaming\n11:28 - Tool calling\n16:11 - Stateful session\n21:02 - Developer experience\n\nMore Apple Developer resources:\nVideo sessions: https://apple.co/VideoSessions\nDocumentation: https://apple.co/DeveloperDocs\nForums: https://apple.co/DeveloperForums\nApp: https://apple.co/DeveloperApp",
+    "webpage_url": "https://www.youtube.com/watch?v=mJMvFyBvZEk"
+  },
+  "completed_at": "2025-06-11T16:31:12.527668"
+}

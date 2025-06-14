@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 from typing import Optional
 import os, json, shutil, socket, re, logging, uuid, asyncio
-from utils.downloader import download_youtube_video, list_downloaded_videos, check_available_subtitles, DOWNLOAD_DIR
+from utils.downloader import download_youtube_video, list_downloaded_videos, check_available_subtitles, download_youtube_subtitles, download_youtube_translated_subtitles, DOWNLOAD_DIR
 from utils.transcriber import transcribe_to_srt
 from utils.translator import translate_srt_to_zh, translate_video_title
 from utils.subtitle_embedder import burn_subtitle
@@ -332,15 +332,38 @@ def process_video_task_sync(task: dict):
         
         video_path = video_info['filepath']
         
-        # 更新任务状态
-        thread_safe_update_task_progress(task_id, "正在转写音频...", 30, stage="processing")
+        # 检查字幕可用性
+        thread_safe_update_task_progress(task_id, "正在检查字幕可用性...", 20, stage="checking_subtitles")
         
-        # 转写生成英文字幕
-        thread_safe_update_task_progress(task_id, "正在生成英文字幕...", 40, stage="transcribing")
+        subtitle_info = check_available_subtitles(video_url)
+        en_srt = None
+        processing_method = "完整处理"
         
-        en_srt = transcribe_to_srt(video_path)
+        # 优先尝试使用 youtube-transcript-api 获取字幕
+        if subtitle_info.get('transcript_api_available') and (
+            subtitle_info.get('has_english_manual') or subtitle_info.get('has_english_auto')
+        ):
+            thread_safe_update_task_progress(task_id, "正在下载YouTube字幕...", 30, stage="downloading_subtitles")
+            
+            # 优先选择手动字幕
+            prefer_manual = subtitle_info.get('has_english_manual', False)
+            en_srt = download_youtube_subtitles(video_url, ['en', 'en-US', 'en-GB'], prefer_manual)
+            
+            if en_srt:
+                processing_method = "YouTube字幕" + ("(手动)" if prefer_manual else "(自动)")
+                logger.info(f"成功获取YouTube字幕: {processing_method}")
+            else:
+                logger.warning("YouTube字幕下载失败，回退到语音转录")
+        
+        # 如果没有获取到字幕，使用语音转录
         if not en_srt:
-            raise Exception("转写失败")
+            thread_safe_update_task_progress(task_id, "正在转写音频...", 30, stage="processing")
+            thread_safe_update_task_progress(task_id, "正在生成英文字幕...", 40, stage="transcribing")
+            
+            en_srt = transcribe_to_srt(video_path)
+            if not en_srt:
+                raise Exception("转写失败")
+            processing_method = "语音转录"
         
         # 翻译成中文字幕
         thread_safe_update_task_progress(task_id, "正在翻译字幕...", 60, stage="translating")
@@ -385,7 +408,7 @@ def process_video_task_sync(task: dict):
             "download_url": f"{server_url}/static/videos/{output_video_path.name}",
             "duration": duration,
             "title": video_info.get('title', '未命名视频'),
-            "processing_method": "完整处理"
+            "processing_method": processing_method
         }
         
         # 线程安全地更新任务状态为完成
@@ -537,6 +560,77 @@ async def get_videos(request: Request):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/check-subtitles")
+async def check_subtitles(video_url: str = Form(...)):
+    """检查YouTube视频的字幕可用性"""
+    try:
+        subtitle_info = check_available_subtitles(video_url)
+        return {
+            "success": True,
+            "subtitle_info": subtitle_info
+        }
+    except Exception as e:
+        logger.error(f"检查字幕失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"检查字幕失败: {str(e)}")
+
+@app.post("/api/download-subtitles")
+async def download_subtitles_only(
+    video_url: str = Form(...),
+    language_codes: str = Form(default="en,en-US,en-GB"),
+    prefer_manual: bool = Form(default=True),
+    target_language: str = Form(default="zh-Hans")
+):
+    """仅下载字幕（不处理视频）"""
+    try:
+        # 解析语言代码
+        lang_codes = [lang.strip() for lang in language_codes.split(',')]
+        
+        # 下载原文字幕
+        en_srt_path = download_youtube_subtitles(video_url, lang_codes, prefer_manual)
+        if not en_srt_path:
+            raise Exception("无法获取原文字幕")
+        
+        # 如果需要翻译
+        if target_language not in ["en", "en-US", "en-GB"]:
+            # 先尝试直接获取翻译字幕
+            zh_srt_path = download_youtube_translated_subtitles(video_url, target_language)
+            processing_method = "YouTube翻译字幕"
+            
+            if not zh_srt_path:
+                # 如果没有直接的翻译字幕，使用我们的翻译服务
+                logger.info("YouTube翻译字幕不可用，使用自定义翻译服务")
+                zh_srt_path = translate_srt_to_zh(en_srt_path)
+                processing_method = "自定义翻译"
+                if not zh_srt_path:
+                    # 如果翻译也失败，直接使用英文
+                    logger.warning("翻译失败，使用英文原文")
+                    zh_srt_path = en_srt_path
+                    processing_method = "英文原文(翻译失败)"
+        else:
+            zh_srt_path = en_srt_path
+            processing_method = "英文原文"
+        
+        # 读取字幕内容
+        with open(zh_srt_path, 'r', encoding='utf-8') as f:
+            subtitle_content = f.read()
+        
+        # 清理临时文件
+        if os.path.exists(en_srt_path) and en_srt_path != zh_srt_path:
+            os.unlink(en_srt_path)
+        if os.path.exists(zh_srt_path):
+            os.unlink(zh_srt_path)
+        
+        return {
+            "success": True,
+            "subtitle_content": subtitle_content,
+            "processing_method": processing_method,
+            "message": f"字幕获取成功 ({processing_method})"
+        }
+        
+    except Exception as e:
+        logger.error(f"下载字幕失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"下载字幕失败: {str(e)}")
 
 @app.post("/api/download")
 def api_download(url: str, cookies: str = None):

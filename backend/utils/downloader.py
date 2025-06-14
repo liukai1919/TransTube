@@ -3,6 +3,7 @@ import yt_dlp
 import json
 import logging
 from typing import List, Dict, Optional
+from .subtitle_extractor import SubtitleExtractor, check_youtube_subtitles
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +19,41 @@ if not os.path.exists(DOWNLOAD_DIR):
 def check_available_subtitles(url: str, cookies_path: str = None):
     """
     检查YouTube视频是否有可用的字幕
+    使用youtube-transcript-api优先检查，回退到yt-dlp
     返回字幕信息字典，包括自动生成和手动字幕
     """
+    try:
+        # 优先使用 youtube-transcript-api 检查字幕
+        logger.info(f"使用 youtube-transcript-api 检查字幕可用性: {url}")
+        transcript_info = check_youtube_subtitles(url)
+        
+        if transcript_info['manual'] or transcript_info['generated']:
+            # 转换为兼容格式
+            manual_languages = [t['language_code'] for t in transcript_info['manual']]
+            auto_languages = [t['language_code'] for t in transcript_info['generated']]
+            
+            has_manual_en = any(lang in ['en', 'en-US', 'en-GB'] for lang in manual_languages)
+            has_auto_en = any(lang in ['en', 'en-US', 'en-GB'] for lang in auto_languages)
+            
+            subtitle_info = {
+                'has_manual_subtitles': bool(transcript_info['manual']),
+                'has_auto_subtitles': bool(transcript_info['generated']),
+                'has_english_manual': has_manual_en,
+                'has_english_auto': has_auto_en,
+                'manual_languages': manual_languages,
+                'auto_languages': auto_languages,
+                'needs_whisper_fallback': not (has_manual_en or has_auto_en),
+                'transcript_api_available': True,
+                'translatable_languages': transcript_info.get('translatable_languages', [])
+            }
+            
+            logger.info(f"youtube-transcript-api 字幕检查结果: {subtitle_info}")
+            return subtitle_info
+        
+    except Exception as e:
+        logger.warning(f"youtube-transcript-api 检查失败，回退到 yt-dlp: {str(e)}")
+    
+    # 回退到原有的 yt-dlp 方法
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
@@ -30,7 +64,7 @@ def check_available_subtitles(url: str, cookies_path: str = None):
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            logger.info(f"检查字幕可用性: {url}")
+            logger.info(f"使用 yt-dlp 检查字幕可用性: {url}")
             info_dict = ydl.extract_info(url, download=False)
         
             # 获取字幕信息
@@ -48,10 +82,11 @@ def check_available_subtitles(url: str, cookies_path: str = None):
                 'has_english_auto': has_auto_en,
                 'manual_languages': list(subtitles.keys()) if subtitles else [],
                 'auto_languages': list(automatic_captions.keys()) if automatic_captions else [],
-                'needs_whisper_fallback': not (has_manual_en or has_auto_en)
+                'needs_whisper_fallback': not (has_manual_en or has_auto_en),
+                'transcript_api_available': False
             }
             
-            logger.info(f"字幕检查结果: {subtitle_info}")
+            logger.info(f"yt-dlp 字幕检查结果: {subtitle_info}")
             return subtitle_info
             
     except Exception as e:
@@ -64,7 +99,8 @@ def check_available_subtitles(url: str, cookies_path: str = None):
             'has_english_auto': False,
             'manual_languages': [],
             'auto_languages': [],
-            'needs_whisper_fallback': True
+            'needs_whisper_fallback': True,
+            'transcript_api_available': False
         }
 
 def download_youtube_video(url: str, cookies_path: str = None):
@@ -217,6 +253,74 @@ def list_downloaded_videos() -> List[Dict]:
     except Exception as e:
         logger.error(f"列出已下载视频失败: {str(e)}")
         return []
+
+def download_youtube_subtitles(url: str, language_codes: List[str] = None, 
+                             prefer_manual: bool = True) -> Optional[str]:
+    """
+    使用youtube-transcript-api下载YouTube字幕
+    
+    Args:
+        url: YouTube视频URL
+        language_codes: 优先语言代码列表，默认['en', 'en-US', 'en-GB']
+        prefer_manual: 是否优先选择手动字幕
+        
+    Returns:
+        str: SRT文件路径，失败返回None
+    """
+    try:
+        extractor = SubtitleExtractor()
+        video_id = extractor.extract_video_id(url)
+        
+        if not video_id:
+            logger.error(f"无法从URL提取视频ID: {url}")
+            return None
+        
+        logger.info(f"开始下载字幕: {video_id}")
+        srt_path = extractor.download_transcript(video_id, language_codes, prefer_manual)
+        
+        if srt_path:
+            logger.info(f"字幕下载成功: {srt_path}")
+        else:
+            logger.warning(f"字幕下载失败: {video_id}")
+            
+        return srt_path
+        
+    except Exception as e:
+        logger.error(f"下载字幕时出错: {str(e)}")
+        return None
+
+def download_youtube_translated_subtitles(url: str, target_language: str = 'zh-Hans') -> Optional[str]:
+    """
+    下载YouTube的翻译字幕
+    
+    Args:
+        url: YouTube视频URL
+        target_language: 目标语言代码，默认'zh-Hans'（简体中文）
+        
+    Returns:
+        str: SRT文件路径，失败返回None
+    """
+    try:
+        extractor = SubtitleExtractor()
+        video_id = extractor.extract_video_id(url)
+        
+        if not video_id:
+            logger.error(f"无法从URL提取视频ID: {url}")
+            return None
+        
+        logger.info(f"开始下载翻译字幕: {video_id} -> {target_language}")
+        srt_path = extractor.download_translated_transcript(video_id, target_language)
+        
+        if srt_path:
+            logger.info(f"翻译字幕下载成功: {srt_path}")
+        else:
+            logger.warning(f"翻译字幕下载失败: {video_id}")
+            
+        return srt_path
+        
+    except Exception as e:
+        logger.error(f"下载翻译字幕时出错: {str(e)}")
+        return None
 
 # Example usage (optional, for testing)
 if __name__ == '__main__':
