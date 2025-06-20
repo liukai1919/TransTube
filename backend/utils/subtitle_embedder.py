@@ -247,7 +247,11 @@ def burn_subtitle(video_path: str, srt_path: str, output_file_path: str) -> str:
                 '-rc', 'vbr',
                 '-cq', '19',
                 '-b:v', '0',
-                '-c:a', 'copy',
+                '-c:a', 'aac',
+                '-b:a', '192k',
+                '-ar', '48000',
+                '-ac', '2',
+                '-movflags', '+faststart',
                 '-y',
                 output_path
             ]
@@ -268,7 +272,11 @@ def burn_subtitle(video_path: str, srt_path: str, output_file_path: str) -> str:
                 '-c:v', 'libx264',
                 '-preset', 'medium',
                 '-crf', '23',
-                '-c:a', 'copy',
+                '-c:a', 'aac',
+                '-b:a', '192k',
+                '-ar', '48000',
+                '-ac', '2',
+                '-movflags', '+faststart',
                 '-y',
                 output_path
             ]

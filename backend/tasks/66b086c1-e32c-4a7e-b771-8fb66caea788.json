@@ -1,0 +1,34 @@
+{
+  "id": "66b086c1-e32c-4a7e-b771-8fb66caea788",
+  "video_url": "https://www.youtube.com/watch?v=3289vhOUdKA",
+  "target_lang": "zh",
+  "status": "completed",
+  "progress": 100,
+  "message": "处理完成",
+  "stage": "embedding",
+  "created_at": "2025-06-20T18:15:43.563738",
+  "updated_at": "2025-06-20T18:21:34.587315",
+  "result": {
+    "video_url": "http://127.0.0.1:8000/static/videos/3289vhOUdKA_sub.mp4",
+    "srt_url": "http://127.0.0.1:8000/static/subtitles/3289vhOUdKA_zh.srt",
+    "download_url": "http://127.0.0.1:8000/static/videos/3289vhOUdKA_sub.mp4",
+    "duration": 1624,
+    "title": "Cursor AI Tutorial for Beginners [2025 Edition]",
+    "processing_method": "语音转录"
+  },
+  "output_path": "/home/liukai1919/TransTube-1/backend/static/videos/3289vhOUdKA_sub.mp4",
+  "srt_path": "/home/liukai1919/TransTube-1/backend/static/subtitles/3289vhOUdKA_zh.srt",
+  "video_info": {
+    "filepath": "/home/liukai1919/TransTube-1/backend/downloads/3289vhOUdKA.webm",
+    "title": "Cursor AI Tutorial for Beginners [2025 Edition]",
+    "duration": 1624,
+    "filename": "3289vhOUdKA.webm",
+    "id": "3289vhOUdKA",
+    "uploader": "Volo Builds",
+    "upload_date": "20250306",
+    "thumbnail": "https://i.ytimg.com/vi_webp/3289vhOUdKA/maxresdefault.webp",
+    "description": "Cursor is a powerful new AI-powered code editor that makes coding much faster with the help of AI. In this video I will show you how to code with  Cursor Agents and all of the other Cursor AI features.\n\n📚 Resources:\n- Cursor: https://www.cursor.com/\n- Ultimate AI Coding Prompt Guide: https://github.com/VoloBuilds/prompts/blob/main/ultimate-coding-prompt-guide.md\n\n🚀 In This Video, You'll learn:\n- How to use Cursor AI\n- How to use Cursor Agents\n- Coding with Cursor and Sonnet 3.7\n- The best way to code with AI in 2025\n- How to code with Cursor AI\n- How to use AI to code faster\n- How to use AI to write code for you\n- How to troubleshoot code with AI\n- Cursor coding tips\n- What are MCPs\n- Best way to use Cursor to code\n- Coding in 2025\n- Web Development 2025\n\n💡 Perfect for Viewers Interested in:\n- Best AI coding tools\n- Software Development 2025\n- Future of coding\n- Learning to code in 2025\n- Using AI to code\n- Coding with AI\n- Latest AI tutorials\n- Cursor AI for beginners\n\n🔴 Subscribe for more tutorials on AI and programming!\n\nChapters:\n00:00 - Getting Started with Cursor\n01:01 - Cursor Panel Layout\n03:20 - Cursor AI Chat\n05:36 - Cursor Agents\n08:18 - Troubleshooting & Iterating\n10:23 - Building New Features\n13:09 - Cursor 'Ask' Mode\n14:56 - Real World Cursor Agents\n19:36 - AI Context Features\n21:54 - Auto-complete + AI Features\n24:42 - Cursor Rules\n25:54 - MCP Servers",
+    "webpage_url": "https://www.youtube.com/watch?v=3289vhOUdKA"
+  },
+  "completed_at": "2025-06-20T18:25:45.378397"
+}

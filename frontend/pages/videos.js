@@ -104,13 +104,17 @@ export default function Videos() {
                     </a>
                   )}
                   <a
-                    href={video.download_url || video.video_url}
+                    href={`/api/download/video/${video.download_url.split('/').pop()}`}
                     download={video.title ? `${video.title}.mp4` : 'video.mp4'}
                     className={styles.downloadButton}
                   >
                     下载视频
                   </a>
-                  <a href={video.srt_url} download className={styles.downloadButton}>
+                  <a 
+                    href={`/api/download/subtitle/${video.srt_url.split('/').pop()}`} 
+                    download 
+                    className={styles.downloadButton}
+                  >
                     下载字幕
                   </a>
                 </div>

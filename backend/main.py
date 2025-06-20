@@ -49,10 +49,25 @@ app = FastAPI(title="视频翻译 API", version="1.0.0")
 # 找到 backend 目录
 BASE_DIR = Path(__file__).resolve().parent
 
+# 确保静态文件目录存在并有正确权限
+STATIC_DIR = BASE_DIR / "static"
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
+STATIC_DIR.chmod(0o755)
+
+# 确保子目录存在
+(STATIC_DIR / "videos").mkdir(parents=True, exist_ok=True)
+(STATIC_DIR / "videos").chmod(0o755)
+(STATIC_DIR / "subtitles").mkdir(parents=True, exist_ok=True)
+(STATIC_DIR / "subtitles").chmod(0o755)
+
+logger.info(f"静态文件目录: {STATIC_DIR}")
+logger.info(f"视频目录: {STATIC_DIR / 'videos'}")
+logger.info(f"字幕目录: {STATIC_DIR / 'subtitles'}")
+
 # 把 backend/static 挂到 /static，使用自定义的 CORSStaticFiles
 app.mount(
     "/static",
-    CORSStaticFiles(directory=BASE_DIR / "static"),
+    CORSStaticFiles(directory=STATIC_DIR),
     name="static"
 )
 
@@ -790,6 +805,57 @@ async def startup_event():
         logger.error(f"启动时恢复任务状态失败: {str(e)}")
     
     logger.info(f"应用启动完成，恢复了 {len(tasks)} 个任务")
+
+@app.get("/api/download/{file_type}/{filename}")
+async def download_file(file_type: str, filename: str, request: Request):
+    """
+    专门的下载端点，提供更好的错误处理和调试信息
+    """
+    try:
+        # 验证文件类型
+        if file_type not in ["video", "subtitle"]:
+            raise HTTPException(status_code=400, detail="Invalid file type")
+        
+        # 构建文件路径
+        if file_type == "video":
+            file_path = STATIC_VIDEOS_DIR / filename
+            media_type = "video/mp4"
+        else:  # subtitle
+            file_path = STATIC_SUBS_DIR / filename
+            media_type = "text/plain"
+        
+        # 检查文件是否存在
+        if not file_path.exists():
+            logger.error(f"文件不存在: {file_path}")
+            raise HTTPException(status_code=404, detail=f"File not found: {filename}")
+        
+        # 检查文件权限
+        if not os.access(file_path, os.R_OK):
+            logger.error(f"文件无读取权限: {file_path}")
+            raise HTTPException(status_code=403, detail="File access denied")
+        
+        # 获取文件大小
+        file_size = file_path.stat().st_size
+        logger.info(f"下载文件: {filename}, 大小: {file_size} bytes")
+        
+        # 返回文件响应
+        return FileResponse(
+            path=str(file_path),
+            media_type=media_type,
+            filename=filename,
+            headers={
+                "Content-Length": str(file_size),
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"下载文件时出错: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Download failed: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

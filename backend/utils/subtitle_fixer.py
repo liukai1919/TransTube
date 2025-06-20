@@ -9,6 +9,16 @@ from typing import Dict, List, Tuple, Optional
 
 logger = logging.getLogger(__name__)
 
+# 不翻译的术语列表（保持原样）
+NO_TRANSLATE_TERMS = {
+    'MCp', 'MCP', 'API', 'SDK', 'IDE', 'GitHub', 'Docker', 'Kubernetes', 'DevOps', 
+    'UI', 'UX', 'JSON', 'XML', 'HTTP', 'HTTPS', 'SSL', 'TLS', 'OAuth', 'JWT',
+    'CORS', 'WebSocket', 'CDN', 'DNS', 'Redis', 'MongoDB', 'PostgreSQL', 'MySQL',
+    'SQLite', 'NoSQL', 'CRM', 'ERP', 'CMS', 'GDPR', 'CCPA', 'IPO', 'CEO', 'CTO',
+    'CFO', 'CMO', 'COO', 'CPO', 'VP', 'GM', 'PM', 'PO', 'BA', 'DA', 'SRE',
+    'vibe coding'
+}
+
 # 常见的空白模式和对应的可能术语
 BLANK_PATTERN_FIXES = {
     # 苹果生态系统 - 针对实际问题优化
@@ -96,6 +106,66 @@ CONTEXT_FIXES = [
     }
 ]
 
+def merge_inline_linebreaks(text: str) -> str:
+    """Merge line breaks that split words or short phrases.
+
+    This specifically targets cases such as:
+        "V\nS\nCode" -> "VS Code"
+        "Hello\nWorld" -> "Hello World"
+        "MC\np" -> "MCp"
+        "M\nC\nP" -> "MCP"
+    It replaces newline characters that are between two non-punctuation characters
+    with a single space.
+    """
+    if not text or "\n" not in text:
+        return text
+
+    # 1) 英文字母或数字被换行打断的情况（包括MCp、MCP等术语）
+    text = re.sub(r"([A-Za-z0-9])\n+([A-Za-z0-9])", r"\1\2", text)
+    
+    # 2) 英文与中文或其他字符被换行分隔，例如 "Code\n开发"
+    text = re.sub(r"([A-Za-z0-9])\n+([^\s])", r"\1 \2", text)
+    
+    # 3) 中文与英文之间的换行，例如 "开发\nCode"
+    text = re.sub(r"([\u4e00-\u9fff])\n+([A-Za-z0-9])", r"\1 \2", text)
+    
+    # 4) 处理特殊情况：NO_TRANSLATE_TERMS 里的术语被拆分的情况（大小写不敏感）
+    for term in NO_TRANSLATE_TERMS:
+        if len(term) > 1:
+            # 构造大小写不敏感的正则，允许术语被任意数量\n拆分
+            pattern = r''
+            for ch in term:
+                pattern += f'[{ch.lower()}{ch.upper()}]\\n*'
+            pattern = r'\b' + pattern.rstrip('\\n*') + r'\b'
+            text = re.sub(pattern, term, text, flags=re.IGNORECASE)
+    
+    # 5) 处理连续的英文字母被换行分隔的情况
+    text = re.sub(r"([A-Z])\n+([A-Z])", r"\1\2", text)  # 大写字母之间
+    text = re.sub(r"([a-z])\n+([a-z])", r"\1\2", text)  # 小写字母之间
+    text = re.sub(r"([A-Z])\n+([a-z])", r"\1\2", text)  # 大写+小写字母之间
+
+    return text
+
+def collapse_linebreaks(text: str, max_lines: int = 2) -> str:
+    """Collapse excessive line breaks in subtitle text.
+
+    Args:
+        text: Original subtitle text possibly containing many '\n'.
+        max_lines: The maximum number of lines allowed. If the text has more
+            than this number of non-empty lines, they will be merged into one.
+
+    Returns:
+        Text with line breaks collapsed to at most *max_lines*.
+    """
+    if not text:
+        return text
+
+    # Strip each line and filter out empty lines
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if len(lines) > max_lines:
+        return " ".join(lines)  # Merge into a single line separated by spaces
+    return "\n".join(lines)
+
 def fix_blank_terminology_in_text(text: str, context_history: List[str] = None) -> str:
     """
     修复单行文本中的空白专有名词
@@ -181,7 +251,13 @@ def fix_blank_terminology_in_text(text: str, context_history: List[str] = None) 
         fixed_text = re.sub(pattern, replacement, fixed_text)
     
     fixed_text = fixed_text.strip()
-    
+
+    # 第五点五：合并行内英文换行
+    fixed_text = merge_inline_linebreaks(fixed_text)
+
+    # 第六轮：归并多余换行，避免播放器竖排
+    fixed_text = collapse_linebreaks(fixed_text, max_lines=2)
+
     if fixed_text != original_text:
         logger.info(f"修复完成: '{original_text}' -> '{fixed_text}'")
     

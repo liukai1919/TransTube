@@ -110,18 +110,48 @@ export default function Home() {
       setStatus('正在准备下载...');
       setProgress(0);
       
-      const headResponse = await fetch(fileUrl, { method: 'HEAD' });
+      // 从URL中提取文件类型和文件名
+      const urlParts = fileUrl.split('/');
+      const filename = urlParts[urlParts.length - 1];
+      const fileType = fileUrl.includes('/videos/') ? 'video' : 'subtitle';
+      
+      // 使用新的下载端点
+      const downloadUrl = `/api/download/${fileType}/${filename}`;
+      
+      console.log('开始下载:', downloadUrl, '文件名:', fileName);
+      
+      // 检查文件是否可访问
+      const headResponse = await fetch(downloadUrl, { 
+        method: 'HEAD',
+        headers: {
+          'Accept': '*/*'
+        }
+      });
+      
       if (!headResponse.ok) {
-        throw new Error(`文件不可访问 (${headResponse.status})`);
+        const errorText = await headResponse.text();
+        throw new Error(`文件不可访问 (${headResponse.status}): ${errorText}`);
       }
       
       const contentLength = headResponse.headers.get('content-length');
       const totalSize = contentLength ? parseInt(contentLength, 10) : 0;
       
       setStatus('正在下载...');
-      const response = await fetch(fileUrl);
+      const response = await fetch(downloadUrl, {
+        headers: {
+          'Accept': '*/*'
+        }
+      });
+      
       if (!response.ok) {
-        throw new Error(`下载失败 (${response.status})`);
+        const errorText = await response.text();
+        throw new Error(`下载失败 (${response.status}): ${errorText}`);
+      }
+      
+      // 检查响应类型
+      const contentType = response.headers.get('content-type');
+      if (!contentType || (!contentType.includes('video/') && !contentType.includes('text/'))) {
+        console.warn('意外的内容类型:', contentType);
       }
       
       const reader = response.body.getReader();
@@ -143,13 +173,13 @@ export default function Home() {
       }
       
       const blob = new Blob(chunks);
-      const downloadUrl = window.URL.createObjectURL(blob);
+      const downloadUrl2 = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = downloadUrl;
+      a.href = downloadUrl2;
       a.download = fileName;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(downloadUrl);
+      window.URL.revokeObjectURL(downloadUrl2);
       document.body.removeChild(a);
       
       setStatus('下载完成!');

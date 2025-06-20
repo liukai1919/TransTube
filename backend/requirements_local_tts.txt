@@ -1,0 +1,41 @@
+# 本地语音翻译管道依赖
+# 基于推荐模型：faster-whisper + NLLB + VITS
+
+# Core dependencies
+faster-whisper>=0.10.0
+openai-whisper>=20231117  # 备用方案
+transformers==4.33.*  # 固定版本以匹配 TTS 要求
+torch>=2.0.0
+sentencepiece>=0.1.99
+protobuf>=3.20.0
+
+# TTS dependencies
+TTS==0.20.0  # 固定版本以避免依赖冲突
+coqui-tts>=0.20.0
+
+# Audio processing
+soundfile>=0.12.1
+librosa==0.10.0  # Required by TTS
+torchaudio>=2.0.0
+
+# Scientific computing
+numpy==1.22.0  # Required by TTS
+scipy>=1.10.0
+matplotlib>=3.7.0
+
+# Text processing
+jieba>=0.42.1
+pypinyin>=0.48.0
+
+# Audio utilities
+gtts>=2.3.0
+ffmpeg-python>=0.2.0
+pydub>=0.25.1
+
+# GPU 支持 (可选)
+# torch-audio>=2.0.0+cu118  # 如果使用 CUDA 11.8
+# torch>=2.0.0+cu118        # 如果使用 CUDA 11.8
+
+# 其他工具
+# ffmpeg-python>=0.2.0
+# pydub>=0.25.1 

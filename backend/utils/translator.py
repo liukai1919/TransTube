@@ -18,6 +18,20 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:27b")  # 使用 gemma3:27b 模�
 # 允许通过环境变量调整生成 token 上限；默认 1024
 NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "1024"))
 
+# 不翻译的术语列表（保持原样）
+NO_TRANSLATE_TERMS = {
+    'MCp', 'MCP', 'API', 'SDK', 'IDE', 'GitHub', 'Docker', 'Kubernetes', 'DevOps', 
+    'UI', 'UX', 'JSON', 'XML', 'HTTP', 'HTTPS', 'SSL', 'TLS', 'OAuth', 'JWT',
+    'CORS', 'WebSocket', 'CDN', 'DNS', 'Redis', 'MongoDB', 'PostgreSQL', 'MySQL',
+    'SQLite', 'NoSQL', 'CRM', 'ERP', 'CMS', 'GDPR', 'CCPA', 'IPO', 'CEO', 'CTO',
+    'CFO', 'CMO', 'COO', 'CPO', 'VP', 'GM', 'PM', 'PO', 'BA', 'DA', 'SRE',
+    'VS Code', 'React', 'Vue', 'Angular', 'Node.js', 'Python', 'JavaScript',
+    'TypeScript', 'Java', 'C++', 'C#', 'Go', 'Rust', 'HTML', 'CSS', 'SQL',
+    'Claude', 'ChatGPT', 'OpenAI', 'Anthropic', 'Google', 'Microsoft', 'Apple',
+    'Amazon', 'Meta', 'Netflix', 'YouTube', 'Twitter', 'LinkedIn', 'Instagram',
+    'vibe coding'
+}
+
 # 预定义专业术语库
 PREDEFINED_TERMINOLOGY = {
     # 科技类
@@ -359,6 +373,282 @@ PREDEFINED_TERMINOLOGY = {
     "Serverless": "无服务器",
     "JAMstack": "JAMstack",
     "Headless CMS": "无头内容管理系统",
+    # ───── 云平台 / 云服务 ─────
+    "AWS": "亚马逊云服务",
+    "Amazon Web Services": "亚马逊云服务",
+    "Azure": "微软云",
+    "Google Cloud": "谷歌云",
+    "GCP": "谷歌云",
+    "Alibaba Cloud": "阿里云",
+    "Tencent Cloud": "腾讯云",
+    "DigitalOcean": "DigitalOcean",
+    "Heroku": "Heroku",
+    "Linode": "Linode",
+    "Cloudflare": "Cloudflare",
+    "SaaS": "软件即服务",
+    "PaaS": "平台即服务",
+    "IaaS": "基础设施即服务",
+    "FaaS": "函数即服务",
+    "S3": "S3对象存储",
+    "EC2": "EC2计算服务",
+    "Lambda": "Lambda函数",
+    "RDS": "关系型数据库服务",
+    "CloudFront": "CloudFront内容分发",
+    "CloudFormation": "CloudFormation模板",
+    "Kinesis": "Kinesis数据流",
+    "IAM": "身份和访问管理",
+    "BigQuery": "BigQuery大数据分析",
+    "Cloud Run": "Cloud Run无服务器运行",
+    "Blob Storage": "Blob对象存储",
+    "Azure Functions": "Azure函数",
+    
+    # ───── 容器 / DevOps / 可观测性 ─────
+    "Container": "容器",
+    "Container Image": "容器镜像",
+    "Container Registry": "容器仓库",
+    "Helm": "Helm",
+    "Helm Chart": "Helm模板",
+    "Istio": "Istio",
+    "Service Mesh": "服务网格",
+    "Envoy": "Envoy",
+    "Jenkins": "Jenkins",
+    "GitLab CI/CD": "GitLab持续集成/交付",
+    "CircleCI": "CircleCI",
+    "Travis CI": "Travis CI",
+    "Ansible": "Ansible",
+    "Chef": "Chef",
+    "Puppet": "Puppet",
+    "Terraform": "Terraform",
+    "Packer": "Packer",
+    "Vault": "Vault密钥管理",
+    "Consul": "Consul服务发现",
+    "Prometheus": "Prometheus监控",
+    "Grafana": "Grafana可视化",
+    "ELK Stack": "ELK日志栈",
+    "OpenTelemetry": "开放可观测性",
+    "Canary Release": "金丝雀发布",
+    "Blue-Green Deployment": "蓝绿部署",
+    
+    # ───── 数据工程 / 大数据生态 ─────
+    "ETL": "抽取转换加载",
+    "ELT": "抽取加载转换",
+    "Data Warehouse": "数据仓库",
+    "Data Lake": "数据湖",
+    "Lakehouse": "湖仓",
+    "Delta Lake": "Delta Lake",
+    "Iceberg": "Iceberg",
+    "Hadoop": "Hadoop",
+    "Spark": "Spark",
+    "Flink": "Flink",
+    "Kafka": "Kafka",
+    "Pulsar": "Pulsar",
+    "Airflow": "Airflow",
+    "NiFi": "NiFi",
+    "Presto": "Presto",
+    "Trino": "Trino",
+    
+    # ───── 机器学习 / 深度学习框架 ─────
+    "PyTorch": "PyTorch",
+    "TensorFlow": "TensorFlow",
+    "Keras": "Keras",
+    "scikit-learn": "scikit-learn",
+    "XGBoost": "XGBoost",
+    "LightGBM": "LightGBM",
+    "NumPy": "NumPy",
+    "Pandas": "pandas",
+    "Matplotlib": "Matplotlib",
+    "Plotly": "Plotly",
+    "Seaborn": "Seaborn",
+    "MLflow": "MLflow",
+    "Kubeflow": "Kubeflow",
+    "TFX": "TFX",
+    "ONNX": "ONNX",
+    "Hugging Face": "Hugging Face",
+    "Transformer": "Transformer",
+    "BERT": "BERT",
+    "GPT": "GPT",
+    "LLM": "大语言模型",
+    "RNN": "循环神经网络",
+    "CNN": "卷积神经网络",
+    "GAN": "生成对抗网络",
+    "Diffusion Model": "扩散模型",
+    "Stable Diffusion": "Stable Diffusion",
+    "DALL·E": "DALL·E",
+    "Midjourney": "Midjourney",
+    "RL": "强化学习",
+    "RLHF": "人类反馈强化学习",
+    
+    # ───── 网络 / 协议 / 基础设施 ─────
+    "TCP": "TCP",
+    "UDP": "UDP",
+    "IP": "IP协议",
+    "TCP/IP": "TCP/IP",
+    "IPv4": "IPv4",
+    "IPv6": "IPv6",
+    "FTP": "FTP",
+    "SFTP": "SFTP",
+    "SSH": "SSH",
+    "DHCP": "DHCP",
+    "NAT": "网络地址转换",
+    "VPN": "虚拟专用网",
+    "Reverse Proxy": "反向代理",
+    "Nginx": "Nginx",
+    "Apache": "Apache",
+    "HAProxy": "HAProxy",
+    "BGP": "边界网关协议",
+    "QoS": "服务质量",
+    
+    # ───── 信息安全 / 合规 ─────
+    "Firewall": "防火墙",
+    "WAF": "Web应用防火墙",
+    "IDS": "入侵检测系统",
+    "IPS": "入侵防御系统",
+    "SIEM": "安全信息事件管理",
+    "SOC": "安全运营中心",
+    "DLP": "数据防泄漏",
+    "Zero Trust": "零信任",
+    "SAST": "静态应用安全测试",
+    "DAST": "动态应用安全测试",
+    "RASP": "运行时应用自我保护",
+    "CVE": "公共漏洞与暴露",
+    "OWASP": "OWASP",
+    "OWASP Top Ten": "OWASP前十",
+    "MITRE ATT&CK": "MITRE ATT&CK",
+    "PKI": "公钥基础设施",
+    "MFA": "多因素认证",
+    "AES": "高级加密标准",
+    "RSA": "RSA",
+    "ECC": "椭圆曲线加密",
+    "Hash": "哈希",
+    "Salt": "盐值",
+    
+    # ───── 虚拟化 / 硬件加速 ─────
+    "VMware": "VMware",
+    "Hyper-V": "Hyper-V",
+    "KVM": "KVM",
+    "VirtualBox": "VirtualBox",
+    "Hypervisor": "虚拟机监控器",
+    "SR-IOV": "单根I/O虚拟化",
+    "NUMA": "非一致性内存访问",
+    "RISC-V": "RISC-V",
+    "ARM": "ARM架构",
+    "FPGA": "现场可编程门阵列",
+    "ASIC": "专用集成电路",
+    "TPU": "张量处理器",
+    "NPU": "神经网络处理器",
+    "DPU": "数据处理器",
+    
+    # ───── Linux / 操作系统 ─────
+    "Kernel": "内核",
+    "Shell": "Shell",
+    "Bash": "Bash",
+    "Zsh": "Zsh",
+    "Systemd": "Systemd",
+    "Cron": "Cron",
+    "Cronjob": "定时任务",
+    "Package Manager": "包管理器",
+    "APT": "APT",
+    "YUM": "YUM",
+    "RPM": "RPM",
+    "Snap": "Snap",
+    "Homebrew": "Homebrew",
+    
+    # ───── 编程语言 / 生态 ─────
+    "JavaScript": "JavaScript",
+    "TypeScript": "TypeScript",
+    "Go": "Go语言",
+    "Rust": "Rust",
+    "C": "C语言",
+    "C++": "C++",
+    "C#": "C#",
+    "PHP": "PHP",
+    "Ruby": "Ruby",
+    "Perl": "Perl",
+    "Scala": "Scala",
+    "Elixir": "Elixir",
+    "Haskell": "Haskell",
+    "Lua": "Lua",
+    "R": "R语言",
+    "MATLAB": "MATLAB",
+    
+    # ───── 前端框架 / 移动开发 ─────
+    "React": "React",
+    "Next.js": "Next.js",
+    "Vue.js": "Vue.js",
+    "Nuxt.js": "Nuxt.js",
+    "Angular": "Angular",
+    "Svelte": "Svelte",
+    "Flutter": "Flutter",
+    "React Native": "React Native",
+    "Electron": "Electron",
+    "Expo": "Expo",
+    "Tailwind CSS": "Tailwind CSS",
+    "Bootstrap": "Bootstrap",
+    "Material-UI": "Material-UI",
+    "D3.js": "D3.js",
+    
+    # ───── 设计 / 用户体验 ─────
+    "Wireframe": "线框图",
+    "Mockup": "高保真原型",
+    "Prototype": "原型",
+    "Design System": "设计系统",
+    "Style Guide": "样式指南",
+    "Accessibility": "可访问性",
+    "WCAG": "网页内容无障碍指南",
+    "User Journey": "用户旅程",
+    "Information Architecture": "信息架构",
+    "Card Sorting": "卡片分类",
+    
+    # ───── 协作 / 工具 ─────
+    "Jira": "Jira",
+    "Confluence": "Confluence",
+    "Slack": "Slack",
+    "Microsoft Teams": "Microsoft Teams",
+    "Zoom": "Zoom",
+    "Figma": "Figma",
+    "Sketch": "Sketch",
+    "Miro": "Miro",
+    "Notion": "Notion",
+    
+    # ───── 产品 / 指标 ─────
+    "KPI": "关键绩效指标",
+    "OKR": "目标与关键结果",
+    "MAU": "月活跃用户",
+    "DAU": "日活跃用户",
+    "WAU": "周活跃用户",
+    "CAC": "获客成本",
+    "CPM": "千次曝光成本",
+    "CPC": "每次点击成本",
+    "LTV": "客户终身价值",
+    "North Star Metric": "北极星指标",
+    
+    # ───── 商业 / 财务 ─────
+    "CAGR": "年复合增长率",
+    "EBITDA": "息税折旧摊销前利润",
+    "Operating Margin": "营业利润率",
+    "Gross Margin": "毛利率",
+    "CapEx": "资本支出",
+    "OpEx": "运营支出",
+    "Run Rate": "年化运行率",
+    "Dilution": "股权稀释",
+    "SAFE": "简单未来股权协议",
+    "SPAC": "特殊目的收购公司",
+    
+    # ───── Apple 生态补充 ─────
+    "M4": "M4芯片",
+    "Apple Intelligence": "苹果智能",
+    "Spatial Computing": "空间计算",
+    
+    # ───── 新兴技术 / 热点 ─────
+    "RAG": "检索增强生成",
+    "AIGC": "生成式人工智能内容",
+    "Digital Nomad": "数字游民",
+    "Green Computing": "绿色计算",
+    "Circular Economy": "循环经济",
+    "Regenerative AI": "再生式人工智能",
+    "Bioinformatics": "生物信息学",
+    "Synthetic Data": "合成数据",
+    "TinyML": "嵌入式机器学习",
 }
 
 # 设置日志
@@ -385,6 +675,49 @@ logger.debug("这是一条测试日志 - DEBUG")
 logger.info("这是一条测试日志 - INFO")
 logger.warning("这是一条测试日志 - WARNING")
 logger.error("这是一条测试日志 - ERROR")
+
+def protect_no_translate_terms(text: str) -> Tuple[str, Dict[str, str]]:
+    """
+    保护不翻译的术语，在翻译前将它们替换为占位符
+    
+    Args:
+        text: 原始文本
+        
+    Returns:
+        Tuple[str, Dict[str, str]]: (保护后的文本, 占位符映射)
+    """
+    protected_text = text
+    replacements = {}
+    
+    # 按长度排序，优先处理长术语
+    sorted_terms = sorted(NO_TRANSLATE_TERMS, key=len, reverse=True)
+    
+    for i, term in enumerate(sorted_terms):
+        if term and term in protected_text:
+            placeholder = f"__NO_TRANSLATE_{i}__"
+            replacements[placeholder] = term
+            # 使用单词边界进行精确匹配
+            protected_text = re.sub(r'\b' + re.escape(term) + r'\b', placeholder, protected_text, flags=re.IGNORECASE)
+    
+    return protected_text, replacements
+
+def restore_no_translate_terms(text: str, replacements: Dict[str, str]) -> str:
+    """
+    恢复不翻译的术语，将占位符替换回原始术语
+    
+    Args:
+        text: 翻译后的文本
+        replacements: 占位符映射
+        
+    Returns:
+        str: 恢复后的文本
+    """
+    restored_text = text
+    
+    for placeholder, original_term in replacements.items():
+        restored_text = restored_text.replace(placeholder, original_term)
+    
+    return restored_text
 
 def chat_with_ollama(system_prompt: str, user_prompt: str) -> str:
     """
@@ -655,6 +988,9 @@ def smart_chinese_subtitle_split(text: str, max_chars: int = 20) -> List[str]:
             mid_pos = len(text) // 2
             
             for pos in sorted(space_positions, key=lambda x: abs(x - mid_pos)):
+                # 如果空格后紧跟英文字符，跳过该断点，避免把英文单词推到下一行
+                if pos + 1 < len(text) and text[pos + 1].isalpha():
+                    continue
                 part1 = text[:pos]
                 part2 = text[pos + 1:]
                 
@@ -914,28 +1250,57 @@ def enhance_translation_with_terminology(text: str, terminology: Dict[str, str])
 def has_blank_terminology_issues(text: str) -> bool:
     """
     检测文本是否存在空白专有名词问题
+    改进版本：更精确地检测真正的空白问题，而不是正常的专有名词
     """
     if not text:
         return True
+    
+    # 首先检查是否包含正常的专有名词（这些不是问题）
+    normal_terms = NO_TRANSLATE_TERMS | set(PREDEFINED_TERMINOLOGY.keys())
+    
+    # 如果文本只包含正常的专有名词和中文，则不是问题
+    text_words = re.findall(r'\b[A-Za-z]+\b', text)
+    if text_words:
+        # 检查所有英文单词是否都是正常的专有名词
+        all_normal = all(word in normal_terms for word in text_words)
+        if all_normal:
+            return False  # 所有英文单词都是正常的专有名词，不是问题
         
-    # 检测常见的空白模式
+    # 检测真正的空白模式（这些才是问题）
     blank_patterns = [
-        r'",\s*\w+',     # ", 词汇"
-        r'\w+\s*",',     # "词汇 ,"
-        r'",\s*",',      # ", ,"
-        r'",\s*\d+',     # ", 数字"
-        r'",\s*[\u4e00-\u9fff]',  # ", 中文"
+        r'",\s*$',           # 行尾的 ","
+        r'^\s*",\s*',        # 行首的 ","
+        r'",\s*",',          # ", ,"
+        r'",\s*,\s*',        # ", ,"
+        r'",\s*。',          # ", 。"
+        r'",\s*，',          # ", ，"
+        r'",\s*！',          # ", ！"
+        r'",\s*？',          # ", ？"
+        r'",\s*；',          # ", ；"
+        r'",\s*：',          # ", ："
+        r'^\s*",\s*$',       # 整行只是 ","
+        r'\s+",\s+',         # 被空格包围的 ","
+        r'",\s*\d+',         # ", 数字"
+        r'",\s*[\u4e00-\u9fff]',  # ", 中文"（但排除正常的专有名词）
         r'[\u4e00-\u9fff]\s*",',  # "中文 ,"
-        r'\s+",\s+',     # 空格", 空格
-        r'^\s*",\s*$',   # 整行只是 ","
         r'Vision\s*OS["\']?\s*,',  # Vision OS",
         r'Vision\s*Pro["\']?\s*,', # Vision Pro",
+        r'^\s*,\s*$',        # 整行只是 ","
+        r'\s+,\s+',          # 被空格包围的 ","
     ]
     
     for pattern in blank_patterns:
         if re.search(pattern, text):
             return True
-            
+    
+    # 检查是否有连续的空白引号
+    if re.search(r'",\s*",', text) or re.search(r'",\s*,\s*",', text):
+        return True
+    
+    # 检查是否有孤立的引号或逗号
+    if re.search(r'\b",\b', text) or re.search(r'\b,\b', text):
+        return True
+    
     return False
 
 def three_stage_translation(text: str, terminology: Dict[str, str] = None) -> str:
@@ -944,9 +1309,12 @@ def three_stage_translation(text: str, terminology: Dict[str, str] = None) -> st
     增强术语一致性检查和专有名词保护
     确保不再产生空白专有名词
     """
+    # 预处理：保护不翻译的术语
+    protected_text, replacements = protect_no_translate_terms(text)
+    
     # 预处理：使用术语库增强原文
     if terminology:
-        text = enhance_translation_with_terminology(text, terminology)
+        protected_text = enhance_translation_with_terminology(protected_text, terminology)
     
     # 构建术语库提示
     terminology_prompt = ""
@@ -984,7 +1352,10 @@ def three_stage_translation(text: str, terminology: Dict[str, str] = None) -> st
     
     try:
         # 一次性完成翻译，但加强监控
-        translation = chat_with_ollama(system_prompt, f"Translate to Chinese only (NO BLANKS ALLOWED):\n{text}")
+        translation = chat_with_ollama(system_prompt, f"Translate to Chinese only (NO BLANKS ALLOWED):\n{protected_text}")
+        
+        # 恢复不翻译的术语
+        translation = restore_no_translate_terms(translation, replacements)
         
         # 清理翻译结果
         cleaned_translation = clean_translation_output(translation.strip())
@@ -1048,7 +1419,7 @@ def three_stage_translation(text: str, terminology: Dict[str, str] = None) -> st
 def ensure_pure_chinese(text: str, terminology: Dict[str, str] = None) -> str:
     """
     确保字幕内容为纯中文，但保留重要的专有名词
-    改进版本：更智能地处理专有名词
+    改进版本：更智能地处理专有名词，包括AI相关术语
     """
     import re
     
@@ -1062,6 +1433,9 @@ def ensure_pure_chinese(text: str, terminology: Dict[str, str] = None) -> str:
     
     # 添加预定义术语
     protected_terms.update(PREDEFINED_TERMINOLOGY.keys())
+    
+    # 添加不翻译术语
+    protected_terms.update(NO_TRANSLATE_TERMS)
     
     # 添加常见的应该保留的专有名词模式
     common_proper_nouns = {
@@ -1079,8 +1453,14 @@ def ensure_pure_chinese(text: str, terminology: Dict[str, str] = None) -> str:
         "Python", "JavaScript", "TypeScript", "Java", "C++", "C#", "Go", "Rust",
         "HTML", "CSS", "SQL", "NoSQL", "JSON", "XML", "API", "REST", "GraphQL",
         
+        # AI和机器学习相关
+        "Claude", "ChatGPT", "OpenAI", "Anthropic", "GPT", "LLM", "AI", "ML", 
+        "Machine Learning", "Deep Learning", "Neural Network", "TensorFlow", 
+        "PyTorch", "Scikit-learn", "Pandas", "NumPy", "Matplotlib", "Jupyter",
+        
         # 其他常见专有名词
-        "AI", "ML", "VR", "AR", "IoT", "SaaS", "PaaS", "IaaS", "DevOps", "CI/CD"
+        "VR", "AR", "IoT", "SaaS", "PaaS", "IaaS", "DevOps", "CI/CD", "AWS", 
+        "Azure", "GCP", "Cloud", "Blockchain", "Bitcoin", "Ethereum", "NFT"
     }
     
     protected_terms.update(common_proper_nouns)
@@ -1159,10 +1539,10 @@ def clean_translation_output(text: str) -> str:
     elif current_text.startswith('"') and current_text.endswith('"'):
         current_text = current_text[1:-1]
 
-    # Normalize spacing around English words in Chinese text
-    # Add proper spacing around English words if they're embedded in Chinese
-    current_text = re.sub(r'([\u4e00-\u9fff])([A-Za-z])', r'\1 \2', current_text)  # 中文后跟英文
-    current_text = re.sub(r'([A-Za-z])([\u4e00-\u9fff])', r'\1 \2', current_text)  # 英文后跟中文
+    # Normalize spacing around mixed Chinese-English words
+    # 移除中英之间的所有空格，不再强制在英文→中文处插入空格
+    current_text = re.sub(r'([\u4e00-\u9fff])\s*([A-Za-z])', r'\1\2', current_text)
+    current_text = re.sub(r'([A-Za-z])\s*([\u4e00-\u9fff])', r'\1\2', current_text)
     
     # But avoid too many spaces around single words
     current_text = re.sub(r'\s+', ' ', current_text).strip()
@@ -1170,6 +1550,9 @@ def clean_translation_output(text: str) -> str:
     # Clean up excessive spacing around punctuation
     current_text = re.sub(r'\s+([，。！？；：、])', r'\1', current_text)  # Remove space before Chinese punctuation
     current_text = re.sub(r'([，。！？；：、])\s+', r'\1', current_text)   # Remove space after Chinese punctuation
+
+    # 移除出现在两个中文字符之间的空格（不影响中英混排保留的空格）
+    current_text = re.sub(r'([\u4e00-\u9fff])\s+([\u4e00-\u9fff])', r'\1\2', current_text)
 
     cleaned_text = current_text.strip()
 
@@ -1184,6 +1567,9 @@ def translate_simple(text: str, terminology: Dict[str, str] = None) -> str:
     """
     简单翻译（回退方案）
     """
+    # 保护不翻译的术语
+    protected_text, replacements = protect_no_translate_terms(text)
+    
     terminology_prompt = ""
     if terminology:
         term_list = "\n".join([f"- {en}: {zh}" for en, zh in terminology.items()])
@@ -1197,7 +1583,9 @@ def translate_simple(text: str, terminology: Dict[str, str] = None) -> str:
     )
     
     try:
-        translation = chat_with_ollama(system_prompt, f"Translate: {text}")
+        translation = chat_with_ollama(system_prompt, f"Translate: {protected_text}")
+        # 恢复不翻译的术语
+        translation = restore_no_translate_terms(translation, replacements)
         return clean_translation_output(translation.strip())
     except Exception as e:
         logger.error(f"简单翻译失败: {str(e)}")
@@ -1238,10 +1626,17 @@ def translate_subtitle_batch_enhanced(subs, terminology: Dict[str, str] = None, 
         for i in range(0, len(subs), batch_size):
             batch = subs[i:i + batch_size]
             start_idx = i + 1
-            batch_text = "\n".join(
-                f"{start_idx + j}{DELIMITER}{s.content.replace(DELIMITER, ' ')}"
-                for j, s in enumerate(batch)
-            )
+            
+            # 保护不翻译的术语
+            batch_text_parts = []
+            all_replacements = {}
+            
+            for j, s in enumerate(batch):
+                protected_content, replacements = protect_no_translate_terms(s.content.replace(DELIMITER, ' '))
+                batch_text_parts.append(f"{start_idx + j}{DELIMITER}{protected_content}")
+                all_replacements.update(replacements)
+            
+            batch_text = "\n".join(batch_text_parts)
             
             logger.info(f"批量翻译进度: {i//batch_size + 1}/{(len(subs) + batch_size - 1)//batch_size}")
             
@@ -1281,7 +1676,9 @@ def translate_subtitle_batch_enhanced(subs, terminology: Dict[str, str] = None, 
                     try:
                         idx_str, zh = line.split(DELIMITER, 1)
                         idx = int(idx_str.strip())
-                        mapping[idx] = zh.strip()
+                        # 恢复不翻译的术语
+                        zh = restore_no_translate_terms(zh.strip(), all_replacements)
+                        mapping[idx] = zh
                     except ValueError:
                         continue
                 
