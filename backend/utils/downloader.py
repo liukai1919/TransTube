@@ -108,6 +108,19 @@ def download_youtube_video(url: str, cookies_path: str = None):
     Downloads a YouTube video using yt-dlp.
     Returns a dictionary with video information.
     """
+    # 如果未显式传入，尝试从环境变量读取 cookies 路径
+    if cookies_path is None:
+        cookies_path = os.getenv("YT_COOKIES_FILE")
+
+    # 如果环境变量为空或文件不存在，尝试使用项目默认路径
+    if not cookies_path or not os.path.exists(cookies_path):
+        default_cookie_path = os.path.join(BASE_DIR, "youtube.cookies")
+        if os.path.exists(default_cookie_path):
+            logger.info(f"Using fallback cookies file: {default_cookie_path}")
+            cookies_path = default_cookie_path
+
+    logger.info(f"YT_COOKIES_FILE effective path: {cookies_path}")
+
     ydl_opts = {
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(id)s.%(ext)s'),
         'noplaylist': True,
@@ -117,9 +130,11 @@ def download_youtube_video(url: str, cookies_path: str = None):
         'logger': logger,
         'writesubtitles': False,
         'writeautomaticsub': False,
-        }
-    if cookies_path:
+    }
+    if cookies_path and os.path.exists(cookies_path):
         ydl_opts['cookiefile'] = cookies_path
+    elif cookies_path:
+        logger.warning(f"Cookies file not found: {cookies_path}, proceeding without cookies")
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
