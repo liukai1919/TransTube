@@ -96,8 +96,8 @@ def calculate_subtitle_style(width, height):
     else:  # 竖屏或方形
         video_type = "portrait"
     
-    # 允许通过环境变量整体缩放字体大小，默认 0.8 (比原先小 20%)
-    scale_factor = float(os.getenv("SUBTITLE_FONT_SCALE", "0.8"))
+    # 允许通过环境变量整体缩放字体大小，默认 0.68 (比原先小 15%)
+    scale_factor = float(os.getenv("SUBTITLE_FONT_SCALE", "0.68"))
 
     # 根据分辨率类别调整参数 - 优化字体大小以提高清晰度
     if height >= 2160:  # 4K
