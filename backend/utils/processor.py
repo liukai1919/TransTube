@@ -289,37 +289,63 @@ class VideoProcessor:
             
             # 优化字幕格式
             optimized_subs = []
+            merge_gap = 0.8  # 小于 0.8 秒的间隔自动合并
+            max_chars_per_line = 20
+
+            buffer_sub = None
+
+            def flush_buffer(buf):
+                if buf:
+                    optimized_subs.append(buf)
+
             for sub in subs:
-                # 1. 移除多余的空格
-                text = ' '.join(sub.text.split())
-                
-                # 2. 限制每行最大字符数（中文字符）
-                max_chars_per_line = 20
-                if len(text) > max_chars_per_line:
-                    # 在标点符号处换行
-                    punctuation = ['，', '。', '！', '？', '；', '：', '、']
-                    lines = []
-                    current_line = ''
-                    
-                    for char in text:
-                        current_line += char
-                        if len(current_line) >= max_chars_per_line and char in punctuation:
-                            lines.append(current_line)
-                            current_line = ''
-                    
-                    if current_line:
-                        lines.append(current_line)
-                    
-                    text = '\n'.join(lines)
-                
-                # 3. 设置字幕样式
-                sub.text = text
-                optimized_subs.append(sub)
+                # 清理文本
+                text_clean = ' '.join(sub.text.split())
+
+                if buffer_sub is None:
+                    buffer_sub = sub
+                    buffer_sub.text = text_clean
+                    continue
+
+                gap = (sub.start - buffer_sub.end).total_seconds()
+                combined_len = len(buffer_sub.text.replace('\n', '')) + len(text_clean)
+
+                if gap <= merge_gap and combined_len <= max_chars_per_line * 2:
+                    # 合并：扩展结束时间并追加文本（用空格分隔）
+                    buffer_sub.end = sub.end
+                    buffer_sub.text += '\n' + text_clean
+                else:
+                    flush_buffer(buffer_sub)
+                    buffer_sub = sub
+                    buffer_sub.text = text_clean
+
+            flush_buffer(buffer_sub)
+
+            # 再次限制每行长度及重排 index
+            punctuation = ['，', '。', '！', '？', '；', '：', '、']
+            final_subs = []
+            for idx, sub in enumerate(optimized_subs, 1):
+                lines = []
+                for line in sub.text.split('\n'):
+                    if len(line) > max_chars_per_line:
+                        cur = ''
+                        for ch in line:
+                            cur += ch
+                            if len(cur) >= max_chars_per_line and ch in punctuation:
+                                lines.append(cur)
+                                cur = ''
+                        if cur:
+                            lines.append(cur)
+                    else:
+                        lines.append(line)
+                sub.index = idx
+                sub.text = '\n'.join(lines)
+                final_subs.append(sub)
             
             # 保存优化后的字幕
             optimized_srt_path = srt_path.replace('.srt', '_optimized.srt')
             with open(optimized_srt_path, 'w', encoding='utf-8') as f:
-                for sub in optimized_subs:
+                for sub in final_subs:
                     f.write(f"{sub.index}\n")
                     f.write(f"{sub.start} --> {sub.end}\n")
                     f.write(f"{sub.text}\n\n")
