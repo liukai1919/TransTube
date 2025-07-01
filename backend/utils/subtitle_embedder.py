@@ -2,7 +2,7 @@
 """
 调用 FFmpeg 将中文字幕烧录进视频
 """
-import os, subprocess, tempfile, shutil, logging, shlex, re
+import os, subprocess, tempfile, shutil, logging, shlex, re, math
 from pathlib import Path
 
 # 设置日志
@@ -96,26 +96,29 @@ def calculate_subtitle_style(width, height):
     else:  # 竖屏或方形
         video_type = "portrait"
     
+    # 允许通过环境变量整体缩放字体大小，默认 0.8 (比原先小 20%)
+    scale_factor = float(os.getenv("SUBTITLE_FONT_SCALE", "0.8"))
+
     # 根据分辨率类别调整参数 - 优化字体大小以提高清晰度
     if height >= 2160:  # 4K
         resolution_class = "4k"
-        base_font_ratio = 0.025  # 增大到2.5%
+        base_font_ratio = 0.02 * scale_factor  # 原 0.025 -> 减小
         margin_ratio = 0.02
     elif height >= 1440:  # 2K/1440p
         resolution_class = "2k"
-        base_font_ratio = 0.028  # 增大到2.8%
+        base_font_ratio = 0.022 * scale_factor
         margin_ratio = 0.025
     elif height >= 1080:  # 1080p
         resolution_class = "1080p"
-        base_font_ratio = 0.030  # 增大到3.0%
+        base_font_ratio = 0.024 * scale_factor
         margin_ratio = 0.03
     elif height >= 720:  # 720p
         resolution_class = "720p"
-        base_font_ratio = 0.035  # 增大到3.5%
+        base_font_ratio = 0.028 * scale_factor
         margin_ratio = 0.035
     else:  # 480p及以下
         resolution_class = "sd"
-        base_font_ratio = 0.040  # 增大到4.0%
+        base_font_ratio = 0.032 * scale_factor
         margin_ratio = 0.04
     
     # 根据视频类型调整
@@ -140,19 +143,19 @@ def calculate_subtitle_style(width, height):
         margin_r = 40
     
     # 计算最终参数
-    base_font_size = int(height * base_font_ratio)
+    base_font_size = max(10, int(height * base_font_ratio))
     
     # 字体大小限制 - 提高最小和最大值以增强可读性
     if resolution_class == "4k":
-        font_size = max(36, min(base_font_size, 72))  # 36-72px
+        font_size = max(28, min(base_font_size, 64))
     elif resolution_class == "2k":
-        font_size = max(28, min(base_font_size, 56))  # 28-56px
+        font_size = max(22, min(base_font_size, 48))
     elif resolution_class == "1080p":
-        font_size = max(24, min(base_font_size, 48))  # 24-48px
+        font_size = max(18, min(base_font_size, 40))
     elif resolution_class == "720p":
-        font_size = max(18, min(base_font_size, 36))  # 18-36px
+        font_size = max(14, min(base_font_size, 32))
     else:  # SD
-        font_size = max(14, min(base_font_size, 28))  # 14-28px
+        font_size = max(12, min(base_font_size, 24))
     
     margin_v = int(height * margin_ratio)
     
