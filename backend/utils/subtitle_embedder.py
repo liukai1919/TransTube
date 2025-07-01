@@ -96,39 +96,39 @@ def calculate_subtitle_style(width, height):
     else:  # 竖屏或方形
         video_type = "portrait"
     
-    # 根据分辨率类别调整参数
+    # 根据分辨率类别调整参数 - 优化字体大小以提高清晰度
     if height >= 2160:  # 4K
         resolution_class = "4k"
-        base_font_ratio = 0.010  # 进一步减少到1.0%（之前是1.2%）
-        margin_ratio = 0.015
+        base_font_ratio = 0.025  # 增大到2.5%
+        margin_ratio = 0.02
     elif height >= 1440:  # 2K/1440p
         resolution_class = "2k"
-        base_font_ratio = 0.012  # 进一步减少到1.2%（之前是1.4%）
-        margin_ratio = 0.018
+        base_font_ratio = 0.028  # 增大到2.8%
+        margin_ratio = 0.025
     elif height >= 1080:  # 1080p
         resolution_class = "1080p"
-        base_font_ratio = 0.013  # 进一步减少到1.3%（之前是1.5%）
-        margin_ratio = 0.02
+        base_font_ratio = 0.030  # 增大到3.0%
+        margin_ratio = 0.03
     elif height >= 720:  # 720p
         resolution_class = "720p"
-        base_font_ratio = 0.015  # 进一步减少到1.5%（之前是1.8%）
-        margin_ratio = 0.025
+        base_font_ratio = 0.035  # 增大到3.5%
+        margin_ratio = 0.035
     else:  # 480p及以下
         resolution_class = "sd"
-        base_font_ratio = 0.018  # 进一步减少到1.8%（之前是2.2%）
-        margin_ratio = 0.03
+        base_font_ratio = 0.040  # 增大到4.0%
+        margin_ratio = 0.04
     
     # 根据视频类型调整
     if video_type == "portrait":
         # 竖屏视频需要调整
-        base_font_ratio *= 1.2  # 竖屏字体稍大
+        base_font_ratio *= 1.1  # 竖屏字体稍大
         margin_ratio *= 0.8     # 竖屏边距稍小
         alignment = 2           # 居中
         margin_l = int(width * 0.05)  # 左右边距按宽度比例
         margin_r = int(width * 0.05)
     elif video_type == "ultrawide":
         # 超宽屏视频
-        base_font_ratio *= 0.9  # 超宽屏字体稍小
+        base_font_ratio *= 0.95  # 超宽屏字体稍小
         margin_ratio *= 1.1     # 边距稍大
         alignment = 2           # 居中
         margin_l = int(width * 0.1)   # 超宽屏左右边距更大
@@ -136,36 +136,36 @@ def calculate_subtitle_style(width, height):
     else:
         # 标准宽屏
         alignment = 2
-        margin_l = 20
-        margin_r = 20
+        margin_l = 40
+        margin_r = 40
     
     # 计算最终参数
     base_font_size = int(height * base_font_ratio)
     
-    # 字体大小限制
+    # 字体大小限制 - 提高最小和最大值以增强可读性
     if resolution_class == "4k":
-        font_size = max(12, min(base_font_size, 24))  # 减少到12-24px（之前是14-28px）
+        font_size = max(36, min(base_font_size, 72))  # 36-72px
     elif resolution_class == "2k":
-        font_size = max(10, min(base_font_size, 20))  # 减少到10-20px（之前是12-24px）
+        font_size = max(28, min(base_font_size, 56))  # 28-56px
     elif resolution_class == "1080p":
-        font_size = max(8, min(base_font_size, 16))   # 减少到8-16px（之前是10-20px）
+        font_size = max(24, min(base_font_size, 48))  # 24-48px
     elif resolution_class == "720p":
-        font_size = max(6, min(base_font_size, 12))   # 减少到6-12px（之前是8-16px）
+        font_size = max(18, min(base_font_size, 36))  # 18-36px
     else:  # SD
-        font_size = max(5, min(base_font_size, 10))   # 减少到5-10px（之前是6-12px）
+        font_size = max(14, min(base_font_size, 28))  # 14-28px
     
     margin_v = int(height * margin_ratio)
     
-    # 根据分辨率调整描边和阴影
+    # 根据分辨率调整描边和阴影 - 增强对比度
     if height >= 1440:
-        outline_width = 1.5
-        shadow_depth = 2
+        outline_width = 3
+        shadow_depth = 3
     elif height >= 720:
-        outline_width = 1
-        shadow_depth = 1
+        outline_width = 2.5
+        shadow_depth = 2
     else:
-        outline_width = 0.8
-        shadow_depth = 1
+        outline_width = 2
+        shadow_depth = 2
     
     # 构建样式字符串
     style = (
@@ -245,10 +245,13 @@ def burn_subtitle(video_path: str, srt_path: str, output_file_path: str) -> str:
                 '-c:v', 'h264_nvenc',
                 '-preset', 'p4',
                 '-rc', 'vbr',
-                '-cq', '19',
+                '-cq', '18',  # 降低CQ值以提高质量 (之前是19)
                 '-b:v', '0',
+                '-maxrate', '20M',  # 设置最大比特率
+                '-bufsize', '40M',  # 设置缓冲区大小
+                '-profile:v', 'high',  # 使用high profile
                 '-c:a', 'aac',
-                '-b:a', '192k',
+                '-b:a', '256k',  # 提高音频比特率 (之前是192k)
                 '-ar', '48000',
                 '-ac', '2',
                 '-movflags', '+faststart',
@@ -270,13 +273,15 @@ def burn_subtitle(video_path: str, srt_path: str, output_file_path: str) -> str:
                 '-i', temp_video_path,
                 '-vf', subtitle_filter_value,
                 '-c:v', 'libx264',
-                '-preset', 'medium',
-                '-crf', '23',
+                '-preset', 'slow',  # 使用slow preset以提高质量
+                '-crf', '18',  # 降低CRF值以提高质量 (之前是23)
+                '-profile:v', 'high',
                 '-c:a', 'aac',
-                '-b:a', '192k',
+                '-b:a', '256k',  # 提高音频比特率
                 '-ar', '48000',
                 '-ac', '2',
                 '-movflags', '+faststart',
+                '-pix_fmt', 'yuv420p',  # 确保兼容性
                 '-y',
                 output_path
             ]

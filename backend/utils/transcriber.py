@@ -151,7 +151,9 @@ def transcribe_with_whisperx(video_path: str, lang: str = "en") -> str:
     """使用 WhisperX 进行转录"""
     try:
         # 初始化模型
-        model, device, batch_size = init_whisperx_model("base", lang)
+        import os
+        wx_size = os.getenv("WHISPERX_MODEL_SIZE", "medium")
+        model, device, batch_size = init_whisperx_model(wx_size, lang)
         
         # 加载音频
         logger.info("正在加载音频...")

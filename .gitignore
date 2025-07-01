@@ -83,5 +83,12 @@ ffmpeg-release-amd64-nvidia.tar.xz
 
 # Backup files
 *~
-*.bak
-*.backup 
+*.backup
+*.webm
+
+# New rules
+backend/static/videos/
+backend/static/subtitles/
+backend/tasks/
+backend/downloads/
+*.webm

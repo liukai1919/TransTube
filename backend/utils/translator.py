@@ -1241,9 +1241,15 @@ def enhance_translation_with_terminology(text: str, terminology: Dict[str, str])
     sorted_terms = sorted(terminology.items(), key=lambda x: len(x[0]), reverse=True)
     
     for en_term, zh_term in sorted_terms:
-        # 使用单词边界匹配，避免部分匹配
         pattern = r'\b' + re.escape(en_term) + r'\b'
-        enhanced_text = re.sub(pattern, zh_term, enhanced_text, flags=re.IGNORECASE)
+        # 对于长度≤3 的短术语，仅在大小写精确匹配时替换
+        if len(en_term) <= 3:
+            def _replace_short(match):
+                return zh_term if match.group(0) == en_term else match.group(0)
+            enhanced_text = re.sub(pattern, _replace_short, enhanced_text)
+        else:
+            # 其他术语忽略大小写替换
+            enhanced_text = re.sub(pattern, zh_term, enhanced_text, flags=re.IGNORECASE)
     
     return enhanced_text
 
@@ -1550,6 +1556,10 @@ def clean_translation_output(text: str) -> str:
     # Clean up excessive spacing around punctuation
     current_text = re.sub(r'\s+([，。！？；：、])', r'\1', current_text)  # Remove space before Chinese punctuation
     current_text = re.sub(r'([，。！？；：、])\s+', r'\1', current_text)   # Remove space after Chinese punctuation
+
+    # 移除模型提示性短语，如"（通常不翻译）" "（usually not translate）"
+    current_text = re.sub(r'（?通常不翻译）?', '', current_text, flags=re.IGNORECASE)
+    current_text = re.sub(r'\(usually not translate\)', '', current_text, flags=re.IGNORECASE)
 
     # 移除出现在两个中文字符之间的空格（不影响中英混排保留的空格）
     current_text = re.sub(r'([\u4e00-\u9fff])\s+([\u4e00-\u9fff])', r'\1\2', current_text)

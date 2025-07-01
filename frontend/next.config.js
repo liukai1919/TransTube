@@ -5,15 +5,10 @@ const nextConfig = {
       return [
         {
           source: '/api/:path*',
-          destination: 'http://localhost:8000/api/:path*',
+          destination: 'http://localhost:8001/api/:path*',
         },
       ];
     },
-    allowedDevOrigins: [
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-      'http://10.0.0.42:3000'  // 添加你的 IP 地址
-    ],
   };
   
   module.exports = nextConfig;
