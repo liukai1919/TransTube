@@ -120,13 +120,12 @@ def merge_inline_linebreaks(text: str) -> str:
     if not text or "\n" not in text:
         return text
 
-    # 1) 英文字母或数字被换行打断的情况（包括MCp、MCP等术语）
-    text = re.sub(r"([A-Za-z0-9])\n+([A-Za-z0-9])", r"\1\2", text)
-    
-    # 2) 英文与中文或其他字符被换行分隔，例如 "Code\n开发"
+    # 1) 先把换行统一转为空格，避免把正常的英文词组粘连到一起
+    #    例如："What\nabout\nhere?" -> "What about here?"
+    text = re.sub(r"([A-Za-z0-9])\n+([A-Za-z0-9])", r"\1 \2", text)
+    # 英文与其他字符间换行 -> 空格
     text = re.sub(r"([A-Za-z0-9])\n+([^\s])", r"\1 \2", text)
-    
-    # 3) 中文与英文之间的换行，例如 "开发\nCode"
+    # 中文与英文之间换行 -> 空格
     text = re.sub(r"([\u4e00-\u9fff])\n+([A-Za-z0-9])", r"\1 \2", text)
     
     # 4) 处理特殊情况：NO_TRANSLATE_TERMS 里的术语被拆分的情况（大小写不敏感）
@@ -139,10 +138,13 @@ def merge_inline_linebreaks(text: str) -> str:
             pattern = r'\b' + pattern.rstrip('\\n*') + r'\b'
             text = re.sub(pattern, term, text, flags=re.IGNORECASE)
     
-    # 5) 处理连续的英文字母被换行分隔的情况
-    text = re.sub(r"([A-Z])\n+([A-Z])", r"\1\2", text)  # 大写字母之间
-    text = re.sub(r"([a-z])\n+([a-z])", r"\1\2", text)  # 小写字母之间
-    text = re.sub(r"([A-Z])\n+([a-z])", r"\1\2", text)  # 大写+小写字母之间
+    # 5) 将被空格分隔的连续大写字母（明显的首字母缩写）并回紧凑形式：
+    #    例如："V S Code" -> "VS Code"、"M C P" -> "MCP"
+    #    这里可能需要多次合并，使用循环直到不再变化
+    prev = None
+    while prev != text:
+        prev = text
+        text = re.sub(r"\b([A-Z])\s+([A-Z])\b", r"\1\2", text)
 
     return text
 

@@ -86,7 +86,7 @@ OPENAI_API_KEY=your_openai_api_key_here
 
 # Ollama 配置（本地 LLM）
 OLLAMA_URL=http://ollama:11434
-OLLAMA_MODEL=gemma3:27b
+OLLAMA_MODEL=gpt-oss:20b
 
 # 功能开关
 USE_WHISPERX=true

@@ -150,9 +150,12 @@ def format_timestamp(seconds: float) -> str:
 def transcribe_with_whisperx(video_path: str, lang: str = "en") -> str:
     """使用 WhisperX 进行转录"""
     try:
-        # 初始化模型
+        # 强制使用最好的模型
         import os
-        wx_size = os.getenv("WHISPERX_MODEL_SIZE", "medium")
+        wx_size = os.getenv("WHISPERX_MODEL_SIZE")
+        # 优先 large-v3, 其次 large, 再其次 medium
+        if not wx_size:
+            wx_size = "large-v3"
         model, device, batch_size = init_whisperx_model(wx_size, lang)
         
         # 加载音频
@@ -303,7 +306,7 @@ def transcribe_to_srt(video_path: str, lang: str = "en") -> str:
         
         # 选择转录方法
         if WHISPERX_AVAILABLE:
-            logger.info("使用 WhisperX 进行转录")
+            logger.info("使用 WhisperX 进行转录 (优先 large-v3/large)")
             return transcribe_with_whisperx(video_path, lang)
         elif WHISPER_TIMESTAMPED_AVAILABLE:
             logger.info("使用 whisper-timestamped 进行转录")

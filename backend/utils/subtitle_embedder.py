@@ -3,13 +3,14 @@
 调用 FFmpeg 将中文字幕烧录进视频
 """
 import os, subprocess, tempfile, shutil, logging, shlex, re, math
+import srt
 from pathlib import Path
 
 # 设置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# 可能的字体路径列表
+# 可能的字体路径列表（参考 KlicStudio 常用字体）
 FONT_PATHS = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/truetype/noto/NotoSansSC-Regular.otf",
@@ -80,126 +81,205 @@ def get_video_dimensions(video_path):
     height = int(data['streams'][0]['height'])
     return width, height
 
-def calculate_subtitle_style(width, height):
-    """根据视频尺寸和宽高比智能计算字幕样式"""
+def calculate_subtitle_style(width, height, is_bilingual=False, content_scale: float = 1.0):
+    """根据视频尺寸智能计算字幕样式，支持双语显示优化"""
     
-    # 计算宽高比
-    aspect_ratio = width / height
+    # 全局字号：双语略小，单语接近原生
+    size_multiplier = 0.78 if is_bilingual else 0.95
+    margin_multiplier = 1.5 if is_bilingual else 1.0
     
-    # 判断视频类型
-    if aspect_ratio > 1.7:  # 超宽屏 (21:9 等)
-        video_type = "ultrawide"
-    elif aspect_ratio > 1.5:  # 标准宽屏 (16:9, 16:10 等)
-        video_type = "widescreen" 
-    elif aspect_ratio > 1.2:  # 传统宽屏 (4:3 等)
-        video_type = "standard"
-    else:  # 竖屏或方形
-        video_type = "portrait"
-    
-    # 允许通过环境变量整体缩放字体大小，默认 0.68 (比原先小 15%)
-    scale_factor = float(os.getenv("SUBTITLE_FONT_SCALE", "0.68"))
-
-    # 根据分辨率类别调整参数 - 优化字体大小以提高清晰度
-    if height >= 2160:  # 4K
-        resolution_class = "4k"
-        base_font_ratio = 0.02 * scale_factor  # 原 0.025 -> 减小
-        margin_ratio = 0.02
-    elif height >= 1440:  # 2K/1440p
-        resolution_class = "2k"
-        base_font_ratio = 0.022 * scale_factor
-        margin_ratio = 0.025
+    # 修正字体大小比例
+    if height >= 2160:  # 4K+
+        # 更小的基础比例与更低的最小值，避免在4K上过大
+        font_size = max(14, min(26, int(height * 0.010 * size_multiplier)))
+        margin_v = int(height * 0.018 * margin_multiplier)
+        outline = 3
+    elif height >= 1440:  # 2K
+        font_size = max(18, min(24, int(height * 0.014 * size_multiplier)))
+        margin_v = int(height * 0.022 * margin_multiplier)
+        outline = 2.5
     elif height >= 1080:  # 1080p
-        resolution_class = "1080p"
-        base_font_ratio = 0.024 * scale_factor
-        margin_ratio = 0.03
-    elif height >= 720:  # 720p
-        resolution_class = "720p"
-        base_font_ratio = 0.028 * scale_factor
-        margin_ratio = 0.035
-    else:  # 480p及以下
-        resolution_class = "sd"
-        base_font_ratio = 0.032 * scale_factor
-        margin_ratio = 0.04
+        font_size = max(14, min(20, int(height * 0.016 * size_multiplier)))
+        margin_v = int(height * 0.025 * margin_multiplier)
+        outline = 2
+    elif height >= 720:   # 720p
+        font_size = max(12, min(18, int(height * 0.018 * size_multiplier)))
+        margin_v = int(height * 0.03 * margin_multiplier)
+        outline = 2
+    else:  # SD (≤480p)
+        font_size = max(10, min(14, int(height * 0.020 * size_multiplier)))
+        margin_v = int(height * 0.04 * margin_multiplier)
+        outline = 1.5
     
-    # 根据视频类型调整
-    if video_type == "portrait":
-        # 竖屏视频需要调整
-        base_font_ratio *= 1.1  # 竖屏字体稍大
-        margin_ratio *= 0.8     # 竖屏边距稍小
-        alignment = 2           # 居中
-        margin_l = int(width * 0.05)  # 左右边距按宽度比例
-        margin_r = int(width * 0.05)
-    elif video_type == "ultrawide":
-        # 超宽屏视频
-        base_font_ratio *= 0.95  # 超宽屏字体稍小
-        margin_ratio *= 1.1     # 边距稍大
-        alignment = 2           # 居中
-        margin_l = int(width * 0.1)   # 超宽屏左右边距更大
-        margin_r = int(width * 0.1)
+    # 宽高比自适应边距
+    aspect_ratio = width / height
+    if aspect_ratio > 2.0:  # 超宽屏
+        margin_l = margin_r = int(width * 0.07)
+    elif aspect_ratio > 1.6:  # 标准宽屏
+        margin_l = margin_r = int(width * 0.045)
+    elif aspect_ratio < 1.0:  # 竖屏
+        margin_l = margin_r = int(width * 0.03)
+        font_size = int(font_size * 1.1)  # 竖屏字体稍大
+    else:  # 4:3 等
+        margin_l = margin_r = 40
+
+    # 环境变量微调（默认 1.0，可通过 SUBTITLE_FONT_SCALE 覆盖）
+    scale = float(os.getenv("SUBTITLE_FONT_SCALE", "1.0"))
+    font_size = int(font_size * scale)
+    
+    # 基于内容的自适应缩放（0.6 ~ 1.2 之间）
+    content_scale = max(0.5, min(1.2, float(content_scale)))
+    font_size = int(font_size * content_scale)
+    
+    # 构建 ASS 样式，双语字幕使用不同的字体配置
+    if is_bilingual:
+        # 双语字幕样式：支持英文和中文字体；强制不自动换行（WrapStyle=2）
+        style = (
+            f"FontName=Noto Sans SC,Arial Unicode MS,DejaVu Sans,"
+            f"FontSize={font_size},"
+            f"PrimaryColour=&HFFFFFF&,"
+            f"OutlineColour=&H000000&,"
+            f"Outline={outline},"
+            f"BorderStyle=1,"
+            f"Alignment=2,"  # 底部居中
+            f"MarginV={margin_v},"
+            f"MarginL={margin_l},"
+            f"MarginR={margin_r},"
+            f"Spacing=3,"  # 行间距稍大，提高可读性
+            f"WrapStyle=2"  # 不自动换行，仅保留显式换行
+        )
     else:
-        # 标准宽屏
-        alignment = 2
-        margin_l = 40
-        margin_r = 40
+        # 单语字幕样式
+        style = (
+            f"FontName=Noto Sans SC,"
+            f"FontSize={font_size},"
+            f"PrimaryColour=&HFFFFFF&,"
+            f"OutlineColour=&H000000&,"
+            f"Outline={outline},"
+            f"BorderStyle=1,"
+            f"Alignment=2,"  # 底部居中
+            f"MarginV={margin_v},"
+            f"MarginL={margin_l},"
+            f"MarginR={margin_r},"
+            f"Spacing=2,"  # 行间距
+            f"WrapStyle=2"  # 不自动换行
+        )
     
-    # 计算最终参数
-    base_font_size = max(10, int(height * base_font_ratio))
-    
-    # 字体大小限制 - 提高最小和最大值以增强可读性
-    if resolution_class == "4k":
-        font_size = max(28, min(base_font_size, 64))
-    elif resolution_class == "2k":
-        font_size = max(22, min(base_font_size, 48))
-    elif resolution_class == "1080p":
-        font_size = max(18, min(base_font_size, 40))
-    elif resolution_class == "720p":
-        font_size = max(14, min(base_font_size, 32))
-    else:  # SD
-        font_size = max(12, min(base_font_size, 24))
-    
-    margin_v = int(height * margin_ratio)
-    
-    # 根据分辨率调整描边和阴影 - 增强对比度
-    if height >= 1440:
-        outline_width = 3
-        shadow_depth = 3
-    elif height >= 720:
-        outline_width = 2.5
-        shadow_depth = 2
-    else:
-        outline_width = 2
-        shadow_depth = 2
-    
-    # 构建样式字符串
-    style = (
-        f"FontName=Noto Sans SC,"
-        f"FontSize={font_size},"
-        f"PrimaryColour=&HFFFFFF&,"
-        f"OutlineColour=&H000000&,"
-        f"Outline={outline_width},"
-        f"ShadowColour=&H000000&,"
-        f"ShadowDepth={shadow_depth},"
-        f"BorderStyle=1,"
-        f"Alignment={alignment},"
-        f"MarginV={margin_v},"
-        f"MarginL={margin_l},"
-        f"MarginR={margin_r}"
-    )
-    
-    logger.info(f"视频类型: {video_type}, 分辨率等级: {resolution_class}, "
-                f"宽高比: {aspect_ratio:.2f}, 字体大小: {font_size}, "
-                f"边距: V={margin_v} L={margin_l} R={margin_r}")
-    
+    subtitle_type = "双语" if is_bilingual else "单语"
+    logger.info(f"{subtitle_type}字幕样式: {width}x{height} -> 字体{font_size}pt, 边距V{margin_v}px, content_scale={content_scale}")
     return style
 
-def burn_subtitle(video_path: str, srt_path: str, output_file_path: str) -> str:
+def detect_bilingual_subtitle(srt_path: str) -> bool:
     """
-    将字幕烧录到视频中，使用 GPU 加速，失败时回退到 CPU
-    output_file_path: 指定的最终输出文件路径
+    检测字幕文件是否为双语字幕
+    通过分析字幕内容中是否同时包含中英文来判断
     """
-    temp_video_dir = None
-    temp_srt_dir = None
-    temp_output_dir = None
+    try:
+        with open(srt_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # 检查是否包含中文字符
+        has_chinese = any('\u4e00' <= ch <= '\u9fff' for ch in content)
+        
+        # 检查是否包含英文字母
+        has_english = any(ch.isalpha() and ord(ch) < 128 for ch in content)
+        
+        # 检查是否包含换行符（双语字幕通常每个条目有多行）
+        lines = content.split('\n')
+        multi_line_entries = 0
+        
+        for i, line in enumerate(lines):
+            # 跳过序号和时间戳行
+            if line.strip().isdigit() or '-->' in line:
+                continue
+            # 检查字幕内容行
+            if line.strip() and i + 1 < len(lines) and lines[i + 1].strip() and not lines[i + 1].strip().isdigit() and '-->' not in lines[i + 1]:
+                multi_line_entries += 1
+        
+        # 如果同时包含中英文且有多行条目，很可能是双语字幕
+        is_bilingual = has_chinese and has_english and multi_line_entries > 0
+        
+        logger.info(f"字幕检测结果: 中文={has_chinese}, 英文={has_english}, 多行条目={multi_line_entries}, 双语={is_bilingual}")
+        return is_bilingual
+        
+    except Exception as e:
+        logger.warning(f"检测双语字幕失败: {str(e)}, 默认为单语字幕")
+        return False
+
+def _measure_line_equivalent_chars(line: str) -> float:
+    """估算一行的等效字符宽度：中文≈1.0，ASCII≈0.6。"""
+    eq = 0.0
+    for ch in line:
+        if ch == '\n':
+            continue
+        if '\u4e00' <= ch <= '\u9fff':
+            eq += 1.0
+        elif ch.isascii():
+            eq += 0.6
+        else:
+            eq += 0.8
+    return eq
+
+
+def compute_content_scale(srt_path: str, width: int, height: int, is_bilingual: bool) -> float:
+    """根据字幕内容长度粗略自适应字体缩放。
+    以1080p为基准：
+      - 双语字幕期望单行最大等效宽度≈34（英文衡量）
+      - 单语字幕期望单行最大等效宽度≈42
+    不足时不放大，超出时按比例缩小，最小到0.6。
+    """
+    try:
+        with open(srt_path, 'r', encoding='utf-8') as fp:
+            subs = list(srt.parse(fp.read()))
+    except Exception as e:
+        logger.warning(f"读取字幕失败，忽略内容自适应: {e}")
+        return 1.0
+
+    max_eq = 0.0
+    for sub in subs:
+        for ln in str(sub.content).split('\n'):
+            ln = ln.strip()
+            if not ln:
+                continue
+            max_eq = max(max_eq, _measure_line_equivalent_chars(ln))
+
+    # 基准阈值按照分辨率线性缩放
+    # 更保守的最大行宽阈值：促使长句更频繁地缩小
+    base_threshold_1080 = 26.0 if is_bilingual else 34.0
+    threshold = base_threshold_1080 * (height / 1080.0)
+
+    if max_eq <= 0.0:
+        return 1.0
+
+    if max_eq <= threshold:
+        return 1.0  # 不放大，保持稳定
+
+    scale = threshold / max_eq
+    return max(0.6, min(1.0, scale))
+
+
+def burn_subtitle(video_path: str, srt_path: str, output_file_path: str, is_bilingual: bool = None) -> str:
+    """
+    将字幕硬烧录进视频。
+
+    1. 若系统检测到 NVENC 且未设置 SUBTITLE_FORCE_CPU=1，则优先使用 GPU (h264_nvenc)。
+    2. GPU 编码失败时自动回退 CPU (libx264)。
+    3. 最终结果复制到 output_file_path 并返回该路径。
+    4. 自动检测或手动指定是否为双语字幕，优化显示样式。
+    
+    Args:
+        video_path: 输入视频路径
+        srt_path: 字幕文件路径
+        output_file_path: 输出视频路径
+        is_bilingual: 是否为双语字幕，None表示自动检测
+    """
+    temp_video_dir: str | None = None
+    temp_srt_dir: str | None = None
+    temp_output_dir: str | None = None
+
+    # ------------------------------------------------------------
+    # 1. 预处理与参数计算
+    # ------------------------------------------------------------
     try:
         # 验证输入文件
         if not os.path.exists(video_path):
@@ -209,15 +289,25 @@ def burn_subtitle(video_path: str, srt_path: str, output_file_path: str) -> str:
         
         logger.info(f"开始烧录字幕，视频: {video_path}, 字幕: {srt_path}")
 
-        # 获取视频尺寸
+        # --------------------------------------------------------
+        # 2. 获取视频尺寸 & 计算字幕样式
+        # --------------------------------------------------------
         width, height = get_video_dimensions(video_path)
         logger.info(f"视频尺寸: {width}x{height}")
         
+        # 检测是否为双语字幕
+        if is_bilingual is None:
+            is_bilingual = detect_bilingual_subtitle(srt_path)
+        
+        # 计算内容自适应缩放
+        content_scale = compute_content_scale(srt_path, width, height, is_bilingual)
         # 计算字幕样式
-        subtitle_style = calculate_subtitle_style(width, height)
+        subtitle_style = calculate_subtitle_style(width, height, is_bilingual, content_scale)
         logger.info(f"字幕样式: {subtitle_style}")
 
-        # 创建临时目录
+        # --------------------------------------------------------
+        # 3. 在临时目录中准备输入 & 输出
+        # --------------------------------------------------------
         temp_video_dir = tempfile.mkdtemp()
         temp_srt_dir = tempfile.mkdtemp()
         temp_output_dir = tempfile.mkdtemp()
@@ -237,78 +327,81 @@ def burn_subtitle(video_path: str, srt_path: str, output_file_path: str) -> str:
         subtitle_filter_value = f"subtitles={temp_srt_internal_path}:force_style='{subtitle_style}'"
         logger.info(f"FFmpeg subtitles filter: {subtitle_filter_value}")
 
-        # 首先尝试GPU编码
-        gpu_success = False
-        try:
-            logger.info("尝试使用GPU编码...")
-            cmd_gpu = [
-                'ffmpeg',
+        # 4. 选择编码方案（GPU 优先）
+        def _run_ffmpeg(cmd: list[str]):
+            logger.info("执行 FFmpeg: %s", ' '.join(cmd))
+            return subprocess.run(cmd, check=True, capture_output=True, text=True)
+
+        def _build_gpu_cmd() -> list[str]:
+            """GPU 编码命令（参考 KlicStudio 优化）"""
+            return [
+                'ffmpeg', '-hide_banner', '-loglevel', 'warning',
                 '-i', temp_video_path,
                 '-vf', subtitle_filter_value,
                 '-c:v', 'h264_nvenc',
-                '-preset', 'p4',
-                '-rc', 'vbr',
-                '-cq', '18',  # 降低CQ值以提高质量 (之前是19)
-                '-b:v', '0',
-                '-maxrate', '20M',  # 设置最大比特率
-                '-bufsize', '40M',  # 设置缓冲区大小
-                '-profile:v', 'high',  # 使用high profile
-                '-c:a', 'aac',
-                '-b:a', '256k',  # 提高音频比特率 (之前是192k)
-                '-ar', '48000',
-                '-ac', '2',
-                '-movflags', '+faststart',
-                '-y',
-                output_path
+                '-preset', 'p4', '-tune', 'hq', '-rc', 'vbr', '-cq', '20',
+                '-b:v', '0', '-maxrate', '15M', '-bufsize', '30M',
+                '-spatial-aq', '1', '-temporal-aq', '1',
+                '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
+                '-movflags', '+faststart', '-y', output_path
             ]
-            
-            logger.info(f"Executing GPU command: {' '.join(cmd_gpu)}")
-            result = subprocess.run(cmd_gpu, check=True, capture_output=True, text=True)
-            gpu_success = True
-            logger.info("GPU编码成功")
-            
-        except subprocess.CalledProcessError as e:
-            logger.warning(f"GPU编码失败，回退到CPU编码. FFmpeg stderr: {e.stderr}")
-            
-            # 回退到CPU编码
-            cmd_cpu = [
-                'ffmpeg',
+
+        def _build_cpu_cmd() -> list[str]:
+            """CPU 编码命令（参考 KlicStudio 优化）"""
+            return [
+                'ffmpeg', '-hide_banner', '-loglevel', 'warning',
                 '-i', temp_video_path,
                 '-vf', subtitle_filter_value,
-                '-c:v', 'libx264',
-                '-preset', 'slow',  # 使用slow preset以提高质量
-                '-crf', '18',  # 降低CRF值以提高质量 (之前是23)
-                '-profile:v', 'high',
-                '-c:a', 'aac',
-                '-b:a', '256k',  # 提高音频比特率
-                '-ar', '48000',
-                '-ac', '2',
-                '-movflags', '+faststart',
-                '-pix_fmt', 'yuv420p',  # 确保兼容性
-                '-y',
-                output_path
+                '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
+                '-profile:v', 'high', '-level', '4.0',
+                '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
+                '-movflags', '+faststart', '-pix_fmt', 'yuv420p',
+                '-y', output_path
             ]
-            
-            logger.info(f"Executing CPU command: {' '.join(cmd_cpu)}")
-            result = subprocess.run(cmd_cpu, check=True, capture_output=True, text=True)
-            logger.info("CPU编码成功")
+
+        use_gpu = (os.getenv("SUBTITLE_FORCE_CPU") != "1") and check_gpu_support()
+
+        try:
+            if use_gpu:
+                logger.info("检测到可用 GPU，尝试使用 NVENC 烧录字幕…")
+                _run_ffmpeg(_build_gpu_cmd())
+            else:
+                raise RuntimeError("GPU 不可用或已被禁用，直接使用 CPU")
+        except Exception as gpu_err:  # 捕获 GPU 不可用或失败
+            logger.warning("GPU 路径失败 (%s)，回退 libx264…", gpu_err)
+            _run_ffmpeg(_build_cpu_cmd())
         
-        # 验证输出文件
+        # --------------------------------------------------------
+        # 5. 结果校验 & 输出（参考 KlicStudio 增强校验）
+        # --------------------------------------------------------
         if not os.path.exists(output_path):
             raise FileNotFoundError("FFmpeg 输出文件不存在")
             
         file_size = os.path.getsize(output_path)
-        logger.info(f"输出文件大小: {file_size / (1024*1024):.2f} MB")
+        input_size = os.path.getsize(video_path)
+        logger.info(f"输出文件: {file_size / (1024*1024):.1f}MB (原始: {input_size / (1024*1024):.1f}MB)")
         
-        if file_size < 100000:  # 小于100KB可能有问题
-            logger.warning(f"输出文件太小 ({file_size} bytes)，可能有问题")
+        # 更严格的文件校验
+        if file_size < 50000:  # 小于50KB肯定有问题
+            raise Exception(f"输出文件异常小 ({file_size} bytes)")
+        elif file_size < input_size * 0.1:  # 小于原文件10%可能有问题
+            logger.warning(f"输出文件可能过小，请检查质量")
         
-        # 确保目标目录存在
+        # 简单的完整性检查：用 ffprobe 验证输出文件
+        try:
+            probe_cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', output_path]
+            result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=10)
+            if result.returncode != 0:
+                raise Exception("输出文件格式校验失败")
+        except subprocess.TimeoutExpired:
+            logger.warning("文件校验超时，跳过")
+        except Exception as e:
+            logger.warning(f"文件校验失败: {e}")
+        
+        # 确保目标目录存在并复制
         Path(output_file_path).parent.mkdir(parents=True, exist_ok=True)
-        
-        # 复制文件到指定的 output_file_path
         shutil.copy2(output_path, output_file_path)
-        logger.info(f"成功将输出文件复制到: {output_file_path}")
+        logger.info(f"字幕烧录完成: {output_file_path}")
         
         return output_file_path
     

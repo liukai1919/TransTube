@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOWNLOAD_DIR = os.path.join(BASE_DIR, "downloads")
 
+# 如果项目根目录下提供了 youtube.cookies，则作为默认登录 Cookie
+DEFAULT_COOKIES_FILE = os.path.join(BASE_DIR, "youtube.cookies")
+
 if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
     os.chmod(DOWNLOAD_DIR, 0o777) # Ensure the directory is writable
@@ -104,6 +107,14 @@ def download_youtube_video(url: str, cookies_path: str = None, force_best: bool 
     参数:
     - force_best: True 时强制首选最高画质分离流 (bestvideo+bestaudio/best)，
                   False 时先尝试 progressive 流（若有）。"""
+    # ---------------- 统一处理 cookies_path ----------------
+    if cookies_path is None:
+        env_cookie = os.getenv("YT_COOKIES_FILE")
+        if env_cookie and os.path.exists(env_cookie):
+            cookies_path = env_cookie
+        elif os.path.exists(DEFAULT_COOKIES_FILE):
+            cookies_path = DEFAULT_COOKIES_FILE
+
     ydl_opts = {
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(id)s.%(ext)s'),
         'noplaylist': True,
@@ -302,9 +313,11 @@ def download_youtube_translated_subtitles(url: str, target_language: str = 'zh-H
 def get_playlist_info(url: str, cookies_path: str = None) -> Optional[Dict]:
     """简单检测 URL 是否为播放列表并返回信息，用于兼容旧接口。"""
     if cookies_path is None:
-        cookies_path = os.getenv("YT_COOKIES_FILE")
-        if cookies_path and not os.path.exists(cookies_path):
-            cookies_path = None
+        env_cookie = os.getenv("YT_COOKIES_FILE")
+        if env_cookie and os.path.exists(env_cookie):
+            cookies_path = env_cookie
+        elif os.path.exists(DEFAULT_COOKIES_FILE):
+            cookies_path = DEFAULT_COOKIES_FILE
 
     ydl_opts = {
         'quiet': True,

@@ -49,7 +49,7 @@ docker-compose ps
 
 # 下载 Ollama 模型（如果需要）
 echo "📥 初始化 Ollama 模型..."
-docker-compose exec -d ollama ollama pull gemma3:27b
+docker-compose exec -d ollama ollama pull gpt-oss:20b
 
 echo "✅ TransTube 启动完成！"
 echo ""

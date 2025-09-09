@@ -364,38 +364,39 @@ def process_video_task_sync(task: dict):
                 raise Exception("转写失败")
             processing_method = "语音转录"
         
-        # 翻译成中文字幕
-        thread_safe_update_task_progress(task_id, "正在翻译字幕...", 60, stage="translating")
+        # 生成双语字幕（翻译+合并）
+        thread_safe_update_task_progress(task_id, "正在生成双语字幕...", 60, stage="translating")
         
-        zh_srt_path = translate_srt_to_zh(en_srt)
-        if not zh_srt_path:
-            raise Exception("翻译失败")
+        from utils.translator import translate_srt_to_bilingual
+        bilingual_srt_path = translate_srt_to_bilingual(en_srt, target_lang)
+        if not bilingual_srt_path:
+            raise Exception("生成双语字幕失败")
         
-        # 读取翻译后的字幕内容
-        with open(zh_srt_path, 'r', encoding='utf-8') as f:
-            zh_srt_content = f.read()
+        # 读取双语字幕内容
+        with open(bilingual_srt_path, 'r', encoding='utf-8') as f:
+            bilingual_srt_content = f.read()
         
         # 生成输出文件名
         base_name = os.path.splitext(os.path.basename(video_path))[0]
         output_video_path = STATIC_VIDEOS_DIR / f"{base_name}_sub.mp4"
-        output_srt_path = STATIC_SUBS_DIR / f"{base_name}_zh.srt"
+        output_srt_path = STATIC_SUBS_DIR / f"{base_name}_bilingual.srt"
         
-        # 烧录字幕到视频
-        thread_safe_update_task_progress(task_id, "正在烧录字幕...", 80, stage="embedding")
+        # 烧录双语字幕到视频
+        thread_safe_update_task_progress(task_id, "正在烧录双语字幕...", 80, stage="embedding")
         
-        final_video_path = burn_subtitle(video_path, zh_srt_path, str(output_video_path))
+        final_video_path = burn_subtitle(video_path, bilingual_srt_path, str(output_video_path), is_bilingual=True)
         if not final_video_path:
-            raise Exception("烧录字幕失败")
+            raise Exception("烧录双语字幕失败")
 
-        # 保存中文字幕到最终位置
+        # 保存双语字幕到最终位置
         with open(output_srt_path, 'w', encoding='utf-8') as f:
-            f.write(zh_srt_content)
+            f.write(bilingual_srt_content)
         
         # 清理临时字幕文件
         if os.path.exists(en_srt):
             os.unlink(en_srt)
-        if os.path.exists(zh_srt_path) and str(Path(zh_srt_path).resolve()) != str(output_srt_path.resolve()):
-            os.unlink(zh_srt_path)
+        if os.path.exists(bilingual_srt_path) and str(Path(bilingual_srt_path).resolve()) != str(output_srt_path.resolve()):
+            os.unlink(bilingual_srt_path)
         
         # 构建结果
         server_url = get_server_url() 
@@ -597,13 +598,14 @@ async def download_subtitles_only(
             processing_method = "YouTube翻译字幕"
             
             if not zh_srt_path:
-                # 如果没有直接的翻译字幕，使用我们的翻译服务
-                logger.info("YouTube翻译字幕不可用，使用自定义翻译服务")
-                zh_srt_path = translate_srt_to_zh(en_srt_path)
-                processing_method = "自定义翻译"
+                # 如果没有直接的翻译字幕，生成双语字幕
+                logger.info("YouTube翻译字幕不可用，生成双语字幕")
+                from utils.translator import translate_srt_to_bilingual
+                zh_srt_path = translate_srt_to_bilingual(en_srt_path, target_language)
+                processing_method = "双语字幕"
                 if not zh_srt_path:
                     # 如果翻译也失败，直接使用英文
-                    logger.warning("翻译失败，使用英文原文")
+                    logger.warning("生成双语字幕失败，使用英文原文")
                     zh_srt_path = en_srt_path
                     processing_method = "英文原文(翻译失败)"
         else:
