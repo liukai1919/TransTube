@@ -38,6 +38,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.venv/
 
 # Environment variables
 .env
@@ -92,3 +93,4 @@ backend/static/subtitles/
 backend/tasks/
 backend/downloads/
 *.webm
+.run/
