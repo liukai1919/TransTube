@@ -324,8 +324,11 @@ def process_video_task_sync(task: dict):
         # 更新任务状态
         thread_safe_update_task_progress(task_id, "正在下载视频...", 10, stage="downloading")
         
-        # 下载视频
-        video_info = download_youtube_video(video_url)
+        # 下载视频（默认强制高画质，支持环境变量 DOWNLOAD_FORCE_BEST/DOWNLOAD_PREFER_H264）
+        video_info = download_youtube_video(
+            video_url,
+            force_best=(os.getenv("DOWNLOAD_FORCE_BEST", "1") == "1")
+        )
         if not video_info or 'filepath' not in video_info:
             raise Exception("视频下载失败")
         

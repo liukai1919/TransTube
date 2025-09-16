@@ -8,6 +8,7 @@ import tempfile
 import logging
 from typing import Optional, List
 import srt
+import re
 from datetime import timedelta
 
 # 行内换行修复与折叠工具（同目录下）
@@ -127,16 +128,84 @@ def create_bilingual_content(en_text: str, zh_text: str) -> str:
     # 如果没有中文翻译或翻译失败，使用英文原文
     if not zh_text or zh_text == en_text:
         if en_text:
-            return f"{en_text}\n{en_text}"  # 显示两行英文
+            return _style_bilingual(en_text, "")  # 仅英文
         else:
             return ""
     
     # 如果没有英文，只显示中文
     if not en_text:
-        return zh_text
+        return _style_bilingual("", zh_text)
     
-    # 正常情况：英文在上，中文在下
-    return f"{en_text}\n{zh_text}"
+    # 正常情况：英文在上，中文在下（应用行级样式）
+    return _style_bilingual(en_text, zh_text)
+
+def _ass_color_from_hex(hex_like: str, default: str = "&HFFFFFF&") -> str:
+    """将 #RRGGBB 或 RRGGBB 转为 ASS 颜色 &HBBGGRR&。"""
+    if not hex_like:
+        return default
+    s = hex_like.strip().lstrip('#')
+    if not re.fullmatch(r"[0-9a-fA-F]{6}", s or ""):
+        return default
+    rr = int(s[0:2], 16)
+    gg = int(s[2:4], 16)
+    bb = int(s[4:6], 16)
+    return f"&H{bb:02X}{gg:02X}{rr:02X}&"
+
+def _escape_ass_text(text: str) -> str:
+    """转义 ASS 文本中的特殊字符，避免被错误解析为样式标记。"""
+    if not text:
+        return text
+    # 转义大括号与反斜杠
+    return text.replace('\\', r'\\').replace('{', r'\{').replace('}', r'\}')
+
+def _style_bilingual(en_line: str, zh_line: str) -> str:
+    """对双语行应用 ASS 行内样式：英文浅灰、可斜体；中文纯白。
+    通过环境变量调整：
+      - SUBTITLE_BILINGUAL_COLOR=1/0（默认 1 开启）
+      - SUBTITLE_EN_COLOR（默认 #A0A0A0）
+      - SUBTITLE_ZH_COLOR（默认 #FFFFFF）
+      - SUBTITLE_EN_ITALIC=1/0（默认 0）
+      - SUBTITLE_EN_FONT_NAME（默认 DejaVu Sans）
+      - SUBTITLE_ZH_FONT_NAME（默认 Noto Sans CJK SC）
+    若关闭，则返回原始行。
+    """
+    # 默认关闭行内样式，恢复旧版（更稳）。如需开启，设置 SUBTITLE_BILINGUAL_STYLE=1。
+    use_style = os.getenv("SUBTITLE_BILINGUAL_STYLE", "0") in {"1", "true", "True"}
+    if not use_style:
+        if en_line and zh_line:
+            return f"{en_line}\n{zh_line}"
+        return en_line or zh_line
+
+    # 兼容旧变量名（仍然生效，但默认值不再强制开启）
+    use_color = os.getenv("SUBTITLE_BILINGUAL_COLOR", "0") not in {"0", "false", "False"}
+    if not use_color:
+        if en_line and zh_line:
+            return f"{en_line}\n{zh_line}"
+        return en_line or zh_line
+
+    en_hex = os.getenv("SUBTITLE_EN_COLOR", "#A0A0A0")
+    zh_hex = os.getenv("SUBTITLE_ZH_COLOR", "#FFFFFF")
+    en_col = _ass_color_from_hex(en_hex, "&HA0A0A0&")
+    zh_col = _ass_color_from_hex(zh_hex, "&HFFFFFF&")
+    en_italic = os.getenv("SUBTITLE_EN_ITALIC", "0") in {"1", "true", "True"}
+    en_font = os.getenv("SUBTITLE_EN_FONT_NAME", "DejaVu Sans").strip()
+    zh_font = os.getenv("SUBTITLE_ZH_FONT_NAME", "Noto Sans CJK SC").strip()
+
+    def style_line(text: str, color_tag: str, italic: bool = False, font_name: str | None = None) -> str:
+        if not text:
+            return ""
+        text = _escape_ass_text(text)
+        it = "\\i1" if italic else ""
+        # 设置主色与字体：\c&HBBGGRR& 与 \fn<font>
+        fn = f"\\fn{font_name}" if font_name else ""
+        return f"{{{fn}\\c{color_tag}{it}}}{text}"
+
+    if en_line and zh_line:
+        return f"{style_line(en_line, en_col, en_italic, en_font)}\n{style_line(zh_line, zh_col, False, zh_font)}"
+    elif en_line:
+        return style_line(en_line, en_col, en_italic, en_font)
+    else:
+        return style_line(zh_line, zh_col, False, zh_font)
 
 def create_bilingual_subtitles_from_translation(en_srt_path: str, translated_srt_path: str, 
                                               output_path: str = None) -> str:

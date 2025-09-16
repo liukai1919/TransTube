@@ -115,6 +115,10 @@ def download_youtube_video(url: str, cookies_path: str = None, force_best: bool 
         elif os.path.exists(DEFAULT_COOKIES_FILE):
             cookies_path = DEFAULT_COOKIES_FILE
 
+    # 强化默认清晰度偏好：可通过环境变量控制
+    env_force_best = os.getenv("DOWNLOAD_FORCE_BEST", "1") == "1"
+    env_prefer_h264 = os.getenv("DOWNLOAD_PREFER_H264", "1") == "1"
+
     ydl_opts = {
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(id)s.%(ext)s'),
         'noplaylist': True,
@@ -124,6 +128,13 @@ def download_youtube_video(url: str, cookies_path: str = None, force_best: bool 
         'logger': logger,
         'writesubtitles': False,
         'writeautomaticsub': False,
+        # 合并分离流时优先输出 mkv（兼容 VP9/AV1，不被迫回落低清 progressive）
+        'merge_output_format': 'mkv',
+        # 格式排序偏好：先分辨率、再帧率；如偏好 h264 则将 avc 排前
+        'format_sort': [
+            'res:1080', 'res', 'fps',
+            'codec:h264' if env_prefer_h264 else 'codec'
+        ],
     }
     if cookies_path:
         ydl_opts['cookiefile'] = cookies_path
@@ -155,9 +166,12 @@ def download_youtube_video(url: str, cookies_path: str = None, force_best: bool 
 
             HIGH_RES_THRESHOLD = 720  # 若 progressive 低于 720p，则认为清晰度不足
 
-            if force_best or progressive_choice is None or progressive_height < HIGH_RES_THRESHOLD:
-                # 1) 直接尝试 DASH 分离流（高分辨率，yt-dlp 会自动合并音视频）
-                format_attempts.append('bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best')
+            if env_force_best or force_best or progressive_choice is None or progressive_height < HIGH_RES_THRESHOLD:
+                # 1) 直接尝试最高画质分离流（不限编码/封装），由 yt-dlp + ffmpeg 合并
+                format_attempts.append('bestvideo+bestaudio/best')
+                # 可选：尽量选 avc/h264（若可用）
+                if env_prefer_h264:
+                    format_attempts.append('bestvideo[vcodec^=avc]+bestaudio/best[ext=mp4]/best')
                 # 备选 progressive（如果存在）
                 if progressive_choice:
                     format_attempts.append(progressive_choice)
@@ -165,7 +179,7 @@ def download_youtube_video(url: str, cookies_path: str = None, force_best: bool 
                 # progressive 已达 720p 及以上，先用它
                 format_attempts.append(progressive_choice)
                 # 然后再尝试 DASH 流
-                format_attempts.append('bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best')
+                format_attempts.append('bestvideo+bestaudio/best')
 
             # 其他兜底格式
             format_attempts.extend([
@@ -206,8 +220,10 @@ def download_youtube_video(url: str, cookies_path: str = None, force_best: bool 
                 downloaded_path = info_dict['filepath']
             else:
                 vid = info_dict.get('id', 'unknown')
-                guess = os.path.join(DOWNLOAD_DIR, f"{vid}.mp4")
-                downloaded_path = guess if os.path.exists(guess) else None
+                # 可能选择了分离流并合并为 mkv
+                guess_mp4 = os.path.join(DOWNLOAD_DIR, f"{vid}.mp4")
+                guess_mkv = os.path.join(DOWNLOAD_DIR, f"{vid}.mkv")
+                downloaded_path = guess_mp4 if os.path.exists(guess_mp4) else (guess_mkv if os.path.exists(guess_mkv) else None)
 
             if not downloaded_path or not os.path.exists(downloaded_path):
                 raise yt_dlp.utils.DownloadError("无法确定已下载文件路径或文件不存在")

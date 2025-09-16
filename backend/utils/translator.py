@@ -78,31 +78,49 @@ KEEP_TERMS = _load_keep_terms()
 # ------------------------- LLM 请求工具 ------------------------- #
 
 def _chat_with_ollama(system_prompt: str, user_prompt: str, *, model: str | None = None) -> str:
-    """与 Ollama Chat API 通讯，返回 assistant content（纯文本）。"""
-    url = f"{OLLAMA_URL}/api/chat"
-    payload = {
-        "model": model or OLLAMA_MODEL,
+    """与 Ollama 通讯，优先使用 /api/chat；若 404/不支持则回退 /api/generate。"""
+    model_name = model or OLLAMA_MODEL
+    chat_url = f"{OLLAMA_URL}/api/chat"
+    chat_payload = {
+        "model": model_name,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
         "options": {"temperature": 0.2, "num_predict": NUM_PREDICT},
-        "stream": False
+        "stream": False,
     }
+
     try:
-        response = requests.post(url, json=payload, timeout=300)
-        response.raise_for_status()
-
-        # 处理非流式响应
-        data = response.json()
-
-        # DEBUG: 打印解析后的 content
-        content = data.get("message", {}).get("content", "").strip()
-        print(f"🔍 最终拼接的 content: {content[:200]}...")
-
-        # Ollama 返回 {"message": {"role": "assistant", "content": "..."}, ...}
-        return content
+        resp = requests.post(chat_url, json=chat_payload, timeout=300)
+        if resp.status_code == 404:
+            raise RuntimeError("CHAT_NOT_SUPPORTED")
+        resp.raise_for_status()
+        data = resp.json()
+        content = (data.get("message", {}) or {}).get("content", "").strip()
+        if content:
+            return content
+        # 若无内容，尝试回退 generate
+        raise RuntimeError("EMPTY_CHAT_CONTENT")
     except Exception as e:
+        # 回退到 /api/generate（旧版本 Ollama 或不支持 chat）
+        if isinstance(e, RuntimeError) and str(e) in {"CHAT_NOT_SUPPORTED", "EMPTY_CHAT_CONTENT"} or (
+            hasattr(e, "response") and getattr(e.response, "status_code", None) == 404
+        ):
+            gen_url = f"{OLLAMA_URL}/api/generate"
+            # 将 system + user 拼成单条 prompt
+            prompt = f"[SYSTEM]\n{system_prompt}\n\n[USER]\n{user_prompt}"
+            gen_payload = {
+                "model": model_name,
+                "prompt": prompt,
+                "options": {"temperature": 0.2, "num_predict": NUM_PREDICT},
+                "stream": False,
+            }
+            r2 = requests.post(gen_url, json=gen_payload, timeout=300)
+            r2.raise_for_status()
+            j2 = r2.json()
+            content = (j2.get("response") or "").strip()
+            return content
         logger.error("Ollama 请求失败: %s", str(e))
         raise
 

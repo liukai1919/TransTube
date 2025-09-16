@@ -106,27 +106,49 @@ def init_whisperx_model(model_size: str = "medium", language: str = "en"):
         raise Exception(f"初始化 WhisperX 失败: {str(e)}")
 
 def init_whisper_timestamped():
-    """初始化 whisper-timestamped 模型（fallback）"""
+    """初始化 whisper-timestamped 模型（fallback）
+
+    - 优先使用 GPU；如果 GPU 加载失败，自动回退到 CPU。
+    - 支持通过环境变量覆盖模型大小：
+      WHISPER_TIMESTAMPED_MODEL_SIZE 或 WHISPER_MODEL_SIZE，默认 medium。
+    """
     try:
-        # 设置 PyTorch CUDA 内存分配器配置
         os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
-        
-        # 检查 CUDA 是否可用
-        if torch.cuda.is_available():
-            logger.info("CUDA 可用，将使用 GPU 加速")
-            device = "cuda"
-            torch.cuda.set_per_process_memory_fraction(0.5)
-            torch.cuda.empty_cache()
+
+        # 选择模型大小
+        model_size = os.getenv("WHISPER_TIMESTAMPED_MODEL_SIZE") or os.getenv("WHISPER_MODEL_SIZE") or "medium"
+
+        # 检查是否强制 CPU
+        force_cpu = os.getenv("TRANSCRIBE_FORCE_CPU") == "1"
+
+        # 首选设备
+        device = "cuda" if (torch.cuda.is_available() and not force_cpu) else "cpu"
+        if device == "cuda":
+            logger.info("CUDA 可用，将尝试在 GPU 上加载 whisper-timestamped 模型")
+            try:
+                torch.cuda.set_per_process_memory_fraction(0.5)
+                torch.cuda.empty_cache()
+            except Exception:
+                pass
         else:
-            logger.info("CUDA 不可用，将使用 CPU")
-            device = "cpu"
-        
-        # 加载模型
-        logger.info("正在加载 whisper-timestamped medium 模型...")
-        model = whisper.load_model("medium", device=device)
-        logger.info("whisper-timestamped 模型加载完成")
-        return model
-        
+            logger.info("使用 CPU 进行转录（CUDA 不可用或已强制 CPU）")
+
+        # 加载模型（带回退）
+        try:
+            logger.info(f"正在加载 whisper-timestamped {model_size} 模型 (device={device})...")
+            model = whisper.load_model(model_size, device=device)
+            logger.info("whisper-timestamped 模型加载完成")
+            return model
+        except Exception as e:
+            if device == "cuda":
+                logger.warning(f"GPU 加载失败，回退到 CPU: {e}")
+                logger.info(f"正在 CPU 上重新加载 whisper-timestamped {model_size} 模型...")
+                model = whisper.load_model(model_size, device="cpu")
+                logger.info("whisper-timestamped 模型在 CPU 上加载完成")
+                return model
+            else:
+                raise
+
     except Exception as e:
         logger.error(f"初始化 whisper-timestamped 失败: {str(e)}", exc_info=True)
         raise Exception(f"初始化语音识别失败: {str(e)}")

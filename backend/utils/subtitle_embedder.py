@@ -4,16 +4,25 @@
 """
 import os, subprocess, tempfile, shutil, logging, shlex, re, math
 import srt
+from datetime import timedelta
 from pathlib import Path
 
 # 设置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# 可能的字体路径列表（参考 KlicStudio 常用字体）
+def _env_font_name() -> str | None:
+    name = os.getenv("SUBTITLE_FONT_NAME")
+    return name.strip() if name else None
+
+# 可能的字体路径列表（系统常见中文字体）
 FONT_PATHS = [
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/truetype/noto/NotoSansSC-Regular.otf",
+    "/usr/share/fonts/opentype/noto/NotoSansSC-Regular.otf",
+    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
     "/usr/share/fonts/truetype/ubuntu/Ubuntu-Regular.ttf"
 ]
@@ -42,6 +51,28 @@ def find_available_font():
     for font_path in FONT_PATHS:
         if os.path.exists(font_path):
             return font_path
+    return None
+
+def find_fonts_dir() -> str | None:
+    """尝试定位包含 CJK 字体的目录，以便 ffmpeg subtitles 指定 fontsdir。
+    避免因系统缺失字体映射导致中文方框/乱码。"""
+    # 优先使用环境变量覆盖
+    env_dir = os.getenv("SUBTITLE_FONTS_DIR")
+    if env_dir and os.path.isdir(env_dir):
+        return env_dir
+    candidates = [
+        "/usr/share/fonts/opentype/noto",
+        "/usr/share/fonts/truetype/noto",
+        "/usr/share/fonts/noto-cjk",
+        "/usr/share/fonts/truetype/wqy",
+        "/usr/share/fonts",
+    ]
+    for d in candidates:
+        if os.path.isdir(d):
+            # 仅在目录内存在常见 CJK 字体时返回
+            for name in ("NotoSansCJK", "NotoSansSC", "wqy", "WenQuanYi"):
+                if any(name.lower() in fn.lower() for fn in os.listdir(d)):
+                    return d
     return None
 
 def sanitize_path_for_ffmpeg(file_path):
@@ -82,92 +113,217 @@ def get_video_dimensions(video_path):
     return width, height
 
 def calculate_subtitle_style(width, height, is_bilingual=False, content_scale: float = 1.0):
-    """根据视频尺寸智能计算字幕样式，支持双语显示优化"""
-    
-    # 全局字号：双语略小，单语接近原生
-    size_multiplier = 0.78 if is_bilingual else 0.95
-    margin_multiplier = 1.5 if is_bilingual else 1.0
-    
-    # 修正字体大小比例
-    if height >= 2160:  # 4K+
-        # 更小的基础比例与更低的最小值，避免在4K上过大
-        font_size = max(14, min(26, int(height * 0.010 * size_multiplier)))
-        margin_v = int(height * 0.018 * margin_multiplier)
-        outline = 3
-    elif height >= 1440:  # 2K
-        font_size = max(18, min(24, int(height * 0.014 * size_multiplier)))
-        margin_v = int(height * 0.022 * margin_multiplier)
-        outline = 2.5
-    elif height >= 1080:  # 1080p
-        font_size = max(14, min(20, int(height * 0.016 * size_multiplier)))
-        margin_v = int(height * 0.025 * margin_multiplier)
-        outline = 2
-    elif height >= 720:   # 720p
-        font_size = max(12, min(18, int(height * 0.018 * size_multiplier)))
-        margin_v = int(height * 0.03 * margin_multiplier)
-        outline = 2
-    else:  # SD (≤480p)
-        font_size = max(10, min(14, int(height * 0.020 * size_multiplier)))
-        margin_v = int(height * 0.04 * margin_multiplier)
-        outline = 1.5
-    
-    # 宽高比自适应边距
-    aspect_ratio = width / height
-    if aspect_ratio > 2.0:  # 超宽屏
-        margin_l = margin_r = int(width * 0.07)
-    elif aspect_ratio > 1.6:  # 标准宽屏
-        margin_l = margin_r = int(width * 0.045)
-    elif aspect_ratio < 1.0:  # 竖屏
-        margin_l = margin_r = int(width * 0.03)
-        font_size = int(font_size * 1.1)  # 竖屏字体稍大
-    else:  # 4:3 等
-        margin_l = margin_r = 40
+    """通用字幕样式方案：不同分辨率自适应，默认描边，也支持半透明底框。"""
 
-    # 环境变量微调（默认 1.0，可通过 SUBTITLE_FONT_SCALE 覆盖）
-    scale = float(os.getenv("SUBTITLE_FONT_SCALE", "1.0"))
-    font_size = int(font_size * scale)
-    
-    # 基于内容的自适应缩放（0.6 ~ 1.2 之间）
-    content_scale = max(0.5, min(1.2, float(content_scale)))
-    font_size = int(font_size * content_scale)
-    
-    # 构建 ASS 样式，双语字幕使用不同的字体配置
-    if is_bilingual:
-        # 双语字幕样式：支持英文和中文字体；强制不自动换行（WrapStyle=2）
-        style = (
-            f"FontName=Noto Sans SC,Arial Unicode MS,DejaVu Sans,"
-            f"FontSize={font_size},"
-            f"PrimaryColour=&HFFFFFF&,"
-            f"OutlineColour=&H000000&,"
-            f"Outline={outline},"
-            f"BorderStyle=1,"
-            f"Alignment=2,"  # 底部居中
-            f"MarginV={margin_v},"
-            f"MarginL={margin_l},"
-            f"MarginR={margin_r},"
-            f"Spacing=3,"  # 行间距稍大，提高可读性
-            f"WrapStyle=2"  # 不自动换行，仅保留显式换行
-        )
+    # 以 1080p≈44 为基准线性缩放，双语略小
+    # 更保守的基础字号，避免占屏：1080p ≈ 28（可被 SUBTITLE_FONT_SCALE 进一步调节）
+    base_size_1080 = 28
+    size_mult = 0.92 if is_bilingual else 1.0
+    font_size = int(round((height / 1080.0) * base_size_1080 * size_mult))
+
+    # 合理区间钳制
+    if height <= 480:
+        font_min, font_max = 18, 24
+    elif height <= 720:
+        font_min, font_max = 26, 34
+    elif height <= 1080:
+        font_min, font_max = 22, 32
+    elif height <= 1440:
+        font_min, font_max = 28, 42
+    elif height <= 2160:
+        font_min, font_max = 40, 56
     else:
-        # 单语字幕样式
-        style = (
-            f"FontName=Noto Sans SC,"
-            f"FontSize={font_size},"
-            f"PrimaryColour=&HFFFFFF&,"
-            f"OutlineColour=&H000000&,"
-            f"Outline={outline},"
-            f"BorderStyle=1,"
-            f"Alignment=2,"  # 底部居中
-            f"MarginV={margin_v},"
-            f"MarginL={margin_l},"
-            f"MarginR={margin_r},"
-            f"Spacing=2,"  # 行间距
-            f"WrapStyle=2"  # 不自动换行
-        )
-    
+        font_min, font_max = 80, 110
+    font_size = max(font_min, min(font_size, font_max))
+
+    # 轮廓与阴影
+    outline = max(1, min(4, int(round(height / 540))))  # 1080p≈2，2160p≈4
+    shadow = 1
+
+    # 边距（按分辨率比例），双语增加底部边距
+    margin_v = int(round(height * (0.06 if is_bilingual else 0.05)))
+    aspect_ratio = width / max(1, height)
+    if aspect_ratio > 2.0:
+        margin_l = margin_r = int(width * 0.06)
+    elif aspect_ratio > 1.6:
+        margin_l = margin_r = int(width * 0.05)
+    else:
+        margin_l = margin_r = int(width * 0.04)
+
+    # 行距（可通过环境变量覆盖）
+    try:
+        spacing_bi = int(os.getenv("SUBTITLE_SPACING_BI", "2"))
+    except Exception:
+        spacing_bi = 2
+    try:
+        spacing_mono = int(os.getenv("SUBTITLE_SPACING", "1"))
+    except Exception:
+        spacing_mono = 1
+    spacing = spacing_bi if is_bilingual else spacing_mono
+
+    # 文本长度自适应（0.6~1.2）
+    content_scale = max(0.6, min(1.2, float(content_scale)))
+    font_size = int(font_size * content_scale)
+
+    # 用户整体缩放
+    user_scale = float(os.getenv("SUBTITLE_FONT_SCALE", "1.0"))
+    font_size = int(font_size * user_scale)
+
+    # 边框风格：1=描边（默认），3=半透明底框
+    border_style = os.getenv("SUBTITLE_BORDER_STYLE", "1").strip()
+    border_style = "3" if border_style == "3" else "1"
+
+    # 字体族（优先中文，含英文字体回退）
+    env_font = _env_font_name()
+    font_chain = (
+        (env_font + ',') if env_font else ''
+    ) + "Noto Sans CJK SC,Noto Sans SC,Source Han Sans SC,Microsoft YaHei,Arial Unicode MS,DejaVu Sans"
+
+    # 组装样式
+    common = (
+        f"FontSize={font_size},"
+        f"PrimaryColour=&HFFFFFF&,"
+        f"OutlineColour=&H000000&,"
+        f"Outline={0 if border_style=='3' else outline},"
+        f"Shadow={shadow if border_style=='1' else 0},"
+        f"BorderStyle={border_style},"
+        f"Alignment=2,"
+        f"MarginV={margin_v},"
+        f"MarginL={margin_l},"
+        f"MarginR={margin_r},"
+        f"Spacing={spacing},"
+        f"WrapStyle={os.getenv('SUBTITLE_WRAP_STYLE','2').strip()}"
+    )
+    if border_style == '3':
+        # 半透明黑底（约 50% 透明）
+        common += ",BackColour=&H80000000&"
+
+    style = f"FontName={font_chain}," + common
+
     subtitle_type = "双语" if is_bilingual else "单语"
-    logger.info(f"{subtitle_type}字幕样式: {width}x{height} -> 字体{font_size}pt, 边距V{margin_v}px, content_scale={content_scale}")
+    logger.info(f"{subtitle_type}字幕样式: {width}x{height} -> 字体{font_size}px, Outline={outline}, BorderStyle={border_style}, content_scale={content_scale}")
     return style
+
+def _wrap_line_by_eq(text: str, max_eq: float) -> str:
+    """按等效字符宽度对单行进行软换行（插入 \n）。
+    - 带空格的文本优先按词切分；纯 CJK/无空格按字符切分。
+    - max_eq 按 _measure_line_equivalent_chars 的度量。
+    """
+    text = text.strip()
+    if not text:
+        return text
+
+    def eq_len(s: str) -> float:
+        return _measure_line_equivalent_chars(s)
+
+    tokens = text.split()
+    lines = []
+    cur = ''
+
+    if len(tokens) > 1:
+        for tok in tokens:
+            pending = (cur + (' ' if cur else '') + tok)
+            if eq_len(pending) <= max_eq or not cur:
+                cur = pending
+            else:
+                lines.append(cur)
+                cur = tok
+        if cur:
+            lines.append(cur)
+    else:
+        # 无空格：逐字符断行（兼容中文）
+        cur = ''
+        for ch in text:
+            pending = cur + ch
+            if eq_len(pending) <= max_eq or not cur:
+                cur = pending
+            else:
+                lines.append(cur)
+                cur = ch
+        if cur:
+            lines.append(cur)
+
+    return "\n".join(lines)
+
+def _wrap_srt_for_width(input_path: str, output_path: str, width: int, height: int, is_bilingual: bool, content_scale: float) -> None:
+    """读取 SRT，针对当前分辨率进行软换行，写回 output_path。
+    阈值基于 1080p 的目标等效宽度并随分辨率及缩放调整。
+    可通过环境变量覆盖：
+      - SUBTITLE_MAX_EQ_1080_BI（默认 26.0）
+      - SUBTITLE_MAX_EQ_1080（默认 34.0）
+    """
+    try:
+        with open(input_path, 'r', encoding='utf-8') as fp:
+            subs = list(srt.parse(fp.read()))
+    except Exception as e:
+        logger.warning(f"读取字幕失败，跳过断句优化: {e}")
+        shutil.copy2(input_path, output_path)
+        return
+
+    base_1080 = float(os.getenv('SUBTITLE_MAX_EQ_1080_BI' if is_bilingual else 'SUBTITLE_MAX_EQ_1080', '26.0' if is_bilingual else '34.0'))
+    # 按高度缩放，并叠加 content_scale & 用户缩放
+    max_eq = base_1080 * (height / 1080.0)
+    try:
+        user_scale = float(os.getenv('SUBTITLE_FONT_SCALE', '1.0'))
+    except Exception:
+        user_scale = 1.0
+    max_eq = max_eq * content_scale * user_scale
+
+    def _split_bilingual_pages(en_line: str, zh_line: str) -> list[tuple[str,str]]:
+        en_wrapped = _wrap_line_by_eq(en_line, max_eq).split('\n') if en_line else []
+        zh_wrapped = _wrap_line_by_eq(zh_line, max_eq).split('\n') if zh_line else []
+        pages = []
+        n = max(len(en_wrapped), len(zh_wrapped)) or 1
+        for i in range(n):
+            en_i = en_wrapped[i] if i < len(en_wrapped) else ""
+            zh_i = zh_wrapped[i] if i < len(zh_wrapped) else ""
+            pages.append((en_i, zh_i))
+        return pages
+
+    def _eq_units(text: str) -> float:
+        return _measure_line_equivalent_chars(text)
+
+    new_subs = []
+    for sub in subs:
+        content = str(sub.content)
+        # 解析成英文、中文两行（若是单语则一行为空）
+        lines = content.split("\n")
+        if is_bilingual:
+            en_line = lines[0] if lines else ""
+            zh_line = lines[1] if len(lines) > 1 else ""
+            pages = _split_bilingual_pages(en_line, zh_line)
+            # 分配时间：按字符等效长度占比分配
+            total_units = sum(_eq_units(a) + _eq_units(b) or 1.0 for a,b in pages) or 1.0
+            total_sec = (sub.end - sub.start).total_seconds() or (0.001)
+            # 最小单页时长（可调），不足则按比例压缩
+            min_page = float(os.getenv("SUBTITLE_PAGE_MIN_SEC", "0.9"))
+            need = min_page * len(pages)
+            ratio = 1.0 if total_sec >= need else (total_sec / need)
+
+            cur_start = sub.start
+            acc = 0.0
+            for idx, (en_i, zh_i) in enumerate(pages):
+                units = (_eq_units(en_i) + _eq_units(zh_i)) or 1.0
+                dur = (units / total_units) * total_sec
+                # 施加下限，但全局按 ratio 缩放，避免总时长超出
+                dur = max(min_page * ratio, dur)
+                # 修正最后一页对齐
+                if idx == len(pages) - 1:
+                    dur = total_sec - acc
+                cur_end = cur_start + timedelta(seconds=dur)
+                page_text = (en_i + ("\n" if zh_i else "" ) + zh_i).strip()
+                new_subs.append(srt.Subtitle(index=0, start=cur_start, end=cur_end, content=page_text))
+                cur_start = cur_end
+                acc += dur
+        else:
+            wrapped = _wrap_line_by_eq(content, max_eq)
+            new_subs.append(srt.Subtitle(index=0, start=sub.start, end=sub.end, content=wrapped))
+
+    with open(output_path, 'w', encoding='utf-8') as out:
+        # 重新编号
+        for i, sub in enumerate(new_subs, 1):
+            sub.index = i
+        out.write(srt.compose(new_subs))
 
 def detect_bilingual_subtitle(srt_path: str) -> bool:
     """
@@ -318,13 +474,24 @@ def burn_subtitle(video_path: str, srt_path: str, output_file_path: str, is_bili
         temp_srt_internal_path = os.path.join(temp_srt_dir, "subtitles.srt")
 
         shutil.copy2(video_path, temp_video_path)
-        shutil.copy2(srt_path, temp_srt_internal_path)
+        # 断句优化：支持开关。默认关闭以保持稳定，如需开启设 SUBTITLE_SMART_WRAP=1。
+        if os.getenv('SUBTITLE_SMART_WRAP', '0') in {'1','true','True'}:
+            _wrap_srt_for_width(srt_path, temp_srt_internal_path, width, height, is_bilingual, content_scale)
+        else:
+            shutil.copy2(srt_path, temp_srt_internal_path)
         
         # 设置输出路径
         output_path = os.path.join(temp_output_dir, "output.mp4")
         
         # 构建字幕滤镜
-        subtitle_filter_value = f"subtitles={temp_srt_internal_path}:force_style='{subtitle_style}'"
+        # 增加 UTF-8 编码与字体目录，避免中文乱码/方块
+        fonts_dir = find_fonts_dir()
+        extra = []
+        extra.append("charenc=UTF-8")
+        if fonts_dir:
+            extra.append(f"fontsdir={fonts_dir}")
+        extra_opts = ":".join(extra)
+        subtitle_filter_value = f"subtitles={temp_srt_internal_path}:{extra_opts}:force_style='{subtitle_style}'"
         logger.info(f"FFmpeg subtitles filter: {subtitle_filter_value}")
 
         # 4. 选择编码方案（GPU 优先）
@@ -334,27 +501,33 @@ def burn_subtitle(video_path: str, srt_path: str, output_file_path: str, is_bili
 
         def _build_gpu_cmd() -> list[str]:
             """GPU 编码命令（参考 KlicStudio 优化）"""
+            cq = os.getenv('SUBTITLE_NVENC_CQ', '20')
+            maxrate = os.getenv('SUBTITLE_MAXRATE', '15M')
+            bufsize = os.getenv('SUBTITLE_BUFSIZE', '30M')
+            aac_bps = os.getenv('SUBTITLE_AAC_BPS', '192k')
             return [
                 'ffmpeg', '-hide_banner', '-loglevel', 'warning',
                 '-i', temp_video_path,
                 '-vf', subtitle_filter_value,
                 '-c:v', 'h264_nvenc',
-                '-preset', 'p4', '-tune', 'hq', '-rc', 'vbr', '-cq', '20',
-                '-b:v', '0', '-maxrate', '15M', '-bufsize', '30M',
+                '-preset', 'p4', '-tune', 'hq', '-rc', 'vbr', '-cq', cq,
+                '-b:v', '0', '-maxrate', maxrate, '-bufsize', bufsize,
                 '-spatial-aq', '1', '-temporal-aq', '1',
-                '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
+                '-c:a', 'aac', '-b:a', aac_bps, '-ar', '48000',
                 '-movflags', '+faststart', '-y', output_path
             ]
 
         def _build_cpu_cmd() -> list[str]:
             """CPU 编码命令（参考 KlicStudio 优化）"""
+            crf = os.getenv('SUBTITLE_X264_CRF', '23')
+            aac_bps = os.getenv('SUBTITLE_AAC_BPS', '192k')
             return [
                 'ffmpeg', '-hide_banner', '-loglevel', 'warning',
                 '-i', temp_video_path,
                 '-vf', subtitle_filter_value,
-                '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
+                '-c:v', 'libx264', '-preset', 'medium', '-crf', crf,
                 '-profile:v', 'high', '-level', '4.0',
-                '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
+                '-c:a', 'aac', '-b:a', aac_bps, '-ar', '48000',
                 '-movflags', '+faststart', '-pix_fmt', 'yuv420p',
                 '-y', output_path
             ]
